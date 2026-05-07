@@ -1,0 +1,169 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HELPERS ---
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    // Auth tokens do not contain roles. Roles are stored in the user profile.
+    function getUserData(userId) { return get(/databases/$(database)/documents/users/$(userId)).data; }
+    function isSuperAdmin() { 
+      let token = request.auth.token;
+      let email = token.get('email', token.get('firebase', {}).get('identities', {}).get('email', [''])[0]);
+      let emailLower = email.lower();
+      return isSignedIn() && (
+        emailLower == 'jaideep@assimilate.one' || 
+        emailLower == 'jaideep@medvarsity.com'
+      ); 
+    }
+    function isAdmin() { 
+      return isSuperAdmin() || (
+        isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'audience') == 'internal' ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'audience') == 'admin')
+      );
+    }
+
+    match /system_check/connection {
+      allow read: if true;
+    }
+
+    // --- 1. USERS ---
+    match /users/{userId} {
+      function isValidUser(data) {
+        return (data.get('email', '') is string) && 
+               (data.get('roles', []) is list);
+      }
+      
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && 
+                       isValidUser(incoming()) && 
+                       (incoming().get('roles', ['audience']).hasAny(['audience', 'speaker', 'sponsor', 'internal', 'admin']) || isAdmin());
+      allow update: if (isSignedIn() && request.auth.uid == userId && 
+                       incoming().get('roles', []) == existing().get('roles', []) && 
+                       incoming().diff(existing()).affectedKeys().hasAny([
+                         'displayName', 'photoURL', 'specialties', 'stats', 'bio', 
+                         'onboardingCompleted', 'careerGoal', 'region', 'role'
+                       ])) || isAdmin();
+    }
+
+    // --- 2. MEDICAL CASES ---
+    match /cases/{caseId} {
+      function isValidMedicalCase(data) {
+        return data.get('title', '') is string && data.get('title', '').size() <= 200 &&
+               data.get('description', '') is string && data.get('description', '').size() <= 10000 &&
+               data.get('status', 'draft') in ['draft', 'published', 'review', 'archived', 'scheduled'];
+      }
+
+      function isPresenter(caseData) {
+        return caseData.presenterId == request.auth.uid || isAdmin();
+      }
+
+      allow get: if true; // Publicly viewable for feed/detail
+      allow list: if (isSignedIn() && (
+                       request.auth.token.get('email', '').lower() == 'jaideep@assimilate.one' || 
+                       request.auth.token.get('email', '').lower() == 'jaideep@medvarsity.com' ||
+                       isAdmin() || 
+                       resource.data.presenterId == request.auth.uid
+                     )) || (resource.data.status in ['published', 'scheduled']);
+      
+      allow create: if (isSignedIn() || isAdmin()) && 
+                       isValidMedicalCase(incoming()) && 
+                       (incoming().presenterId == request.auth.uid || isAdmin()) &&
+                       (incoming().status in ['draft', 'published', 'scheduled'] || isAdmin());
+      
+      allow update: if (isSignedIn() || isAdmin()) && 
+                       (isPresenter(existing()) || isSignedIn()) && // Allow others to update interaction counts
+                       isValidMedicalCase(incoming()) &&
+                       (
+                         isAdmin() ||
+                         // Action: Metadata Update
+                         (isPresenter(existing()) && incoming().diff(existing()).affectedKeys().hasAny([
+                           'title', 'subtitle', 'description', 'videoUrl', 'thumbnailUrl', 
+                           'accreditation', 'presenterName', 'presenterBio', 'presenterQualifications',
+                           'presenterPublications', 'presenterDisclaimer', 'presenterCountry', 'specialty',
+                           'scheduledAt', 'googleMeetLink', 'isSponsored', 'sponsorId', 'sponsorLogo', 
+                           'sponsorName', 'sponsorDisclaimer', 'expiryDate'
+                         ])) ||
+                         // Action: Change Status
+                         (isPresenter(existing()) && incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
+                         // Action: Interaction Counts (Anyone can trigger viewing/liking/hyping if authenticated)
+                         (isSignedIn() && incoming().diff(existing()).affectedKeys().hasAny(['views', 'likes', 'shares', 'bookmarks', 'hypes']))
+                       );
+      
+      allow delete: if (isSignedIn() || isAdmin()) && isPresenter(existing());
+    }
+
+    // --- 3. PROGRESS & INTERACTIONS ---
+    match /user_progress/{progressId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /user_interactions/{interactionId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /user_credits/{creditId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // --- 4. CASE SERIES ---
+    match /series/{seriesId} {
+      function isValidSeries(data) {
+        return data.title is string && data.title.size() <= 200 &&
+               data.authorId is string;
+      }
+      allow read: if true;
+      allow create, update, delete: if isVerified() && (incoming().authorId == request.auth.uid || isAdmin());
+    }
+
+    // --- 4. SPONSORS ---
+    match /sponsors/{sponsorId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- 5. REGISTRATIONS ---
+    match /cases/{caseId}/registrations/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- 6. HYPES ---
+    match /hypes/{hypeId} {
+      allow read: if true;
+      allow create: if isSignedIn() && 
+                      request.auth.uid == incoming().userId && 
+                      hypeId == request.auth.uid + "_" + incoming().caseId &&
+                      !exists(/databases/$(database)/documents/hypes/$(hypeId));
+    }
+
+    // --- 7. CALENDAR EVENTS ---
+    match /calendar_events/{eventId} {
+      function isValidEvent(data) {
+        return data.name is string && data.name.size() <= 200 &&
+               data.date is string && data.date.size() <= 20 &&
+               data.country is string && data.country.size() <= 10;
+      }
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidEvent(incoming());
+      allow update: if isAdmin() && isValidEvent(incoming());
+      allow delete: if isAdmin();
+    }
+  }
+}

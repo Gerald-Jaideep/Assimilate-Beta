@@ -1,0 +1,10 @@
+{
+  "projectId": "assimilate-live",
+  "appId": "1:670688459184:web:a8384d1639209bd6ffbe75",
+  "apiKey": "AIzaSyAkFzMsFQda-Ht7La0_svzfZHiE2U6FNnE",
+  "authDomain": "assimilate-live.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "assimilate-live.firebasestorage.app",
+  "messagingSenderId": "670688459184",
+  "measurementId": "G-9EPYPV5HLH"
+}

@@ -1,0 +1,184 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Healthcare professional profile with learning stats",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "roles": { "type": "array", "items": { "type": "string", "enum": ["audience", "speaker", "sponsor", "internal"] } },
+        "bio": { "type": "string" },
+        "qualifications": { "type": "string" },
+        "country": { "type": "string" },
+        "city": { "type": "string" },
+        "onboardingCompleted": { "type": "boolean" },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "creditPoints": { "type": "number" },
+            "sessionsWatched": { "type": "number" },
+            "hypePoints": { "type": "number" }
+          }
+        },
+        "specialties": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "roles"]
+    },
+    "UserInteraction": {
+      "title": "User Interaction",
+      "description": "Represents a user interaction with a case (like, share, bookmark).",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "caseId": { "type": "string" },
+        "type": { "type": "string", "enum": ["like", "share", "bookmark"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "caseId", "type", "createdAt"]
+    },
+    "UserCredit": {
+      "title": "User Credit",
+      "description": "A record of credits earned for a specific activity.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "caseId": { "type": "string" },
+        "points": { "type": "number" },
+        "specialty": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "caseId", "points", "createdAt"]
+    },
+    "UserProgress": {
+      "title": "User Progress",
+      "description": "Tracks the viewing progress of a user for a specific case.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "caseId": { "type": "string" },
+        "progress": { "type": "number", "minimum": 0, "maximum": 100 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "caseId", "progress", "updatedAt"]
+    },
+    "Hype": {
+      "title": "Hype",
+      "description": "User backing/hyping a specific clinical case",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "caseId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "MedicalCase": {
+      "title": "Medical Case",
+      "description": "A complex or rare medical case presentation",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "description": { "type": "string" },
+        "summary": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "duration": { "type": "string" },
+        "views": { "type": "number" },
+        "likes": { "type": "number" },
+        "hypes": { "type": "number" },
+        "shares": { "type": "number" },
+        "bookmarks": { "type": "number" },
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "specialty": { "type": "string" },
+        "transcript": { "type": "string" },
+        "presenterId": { "type": "string" },
+        "presenterName": { "type": "string" },
+        "presenterBio": { "type": "string" },
+        "presenterQualifications": { "type": "string" },
+        "presenterCountry": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
+        "scheduledAt": { "type": "string", "format": "date-time" },
+        "googleMeetLink": { "type": "string" },
+        "accreditation": {
+          "type": "object",
+          "properties": {
+            "points": { "type": "number" },
+            "type": { "type": "string" }
+          }
+        },
+        "isSponsored": { "type": "boolean" },
+        "sponsorId": { "type": "string" },
+        "sponsorLogo": { "type": "string" },
+        "sponsorName": { "type": "string" },
+        "sponsorDisclaimer": { "type": "string" },
+        "expiryDate": { "type": "string", "format": "date-time" },
+        "seriesId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "presenterId", "status"]
+    },
+    "Sponsor": {
+      "title": "Sponsor",
+      "description": "Educational grant provider",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "bannerImageUrl": { "type": "string" },
+        "profile": { "type": "string" },
+        "website": { "type": "string" },
+        "disclaimer": { "type": "string" },
+        "preRollVideo": { "type": "string" },
+        "postRollVideo": { "type": "string" },
+        "assets": { "type": "array", "items": { "type": "object" } },
+        "assignedUserIds": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Registration": {
+      "title": "Registration",
+      "description": "User registration for a scheduled case",
+      "type": "object",
+      "properties": {
+        "caseId": { "type": "string" },
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "reminderSet": { "type": "boolean" },
+        "registeredAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and stats"
+    },
+    "cases/{caseId}": {
+      "schema": "MedicalCase",
+      "description": "Expert medical case presentations"
+    },
+    "sponsors/{sponsorId}": {
+      "schema": "Sponsor",
+      "description": "Healthcare industry sponsors"
+    },
+    "cases/{caseId}/registrations/{userId}": {
+      "schema": "Registration",
+      "description": "Event registrations"
+    },
+    "user_interactions/{interactionId}": {
+      "schema": "UserInteraction",
+      "description": "Tracks user likes, shares, and bookmarks for clinical cases."
+    },
+    "user_credits/{creditId}": {
+      "schema": "UserCredit",
+      "description": "History of credit points earned by users for continuous learning."
+    },
+    "user_progress/{progressId}": {
+      "schema": "UserProgress",
+      "description": "Real-time tracking of case viewing progress for session persistence."
+    }
+  }
+}
