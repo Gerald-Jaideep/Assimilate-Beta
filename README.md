@@ -1,20 +1,35 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Assimilate One | Advanced Medical Education Platform
 
-# Run and deploy your AI Studio app
+Assimilate One is a high-performance clinical education platform designed for peer-to-peer knowledge transfer through immersive video cases. Built for speed, SEO, and professional reliability.
 
-This contains everything you need to run your app locally.
+## 🚀 Core Features
 
-View your app in AI Studio: https://ai.studio/apps/3db595e9-870b-49ed-b055-63766282b475
+### 🎬 Clinical Content Formats
+- **Clinical Video Cases:** Immersive playback with progress persistence and "Hype" tracking.
+- **Structured CRF Presentations:** Detailed text+image case presentations based on industry-standard Case Report Forms.
+- **Investigative Supporting Material:** Support for DICOM links, audio evidence, and clinical scans.
+- **Peer Review Workflow:** Integrated clinical validation and presenter/reviewer credentialing.
 
-## Run Locally
+### 🛡️ Internal Management (Dashboard)
+- **Case Submission Wizard:** Multi-step wizard for Live Sessions or Recorded Cases.
+- **Role-Based Access:** Admin and speaker validation logic.
+- **Accreditation System:** Dynamic CPD/CME point assignment and watch-time gating.
 
-**Prerequisites:**  Node.js
+### 🔍 SEO & Technical Architecture
+- **Server Side Rendering (SSR):** Dynamic meta tag injection for social sharing (OG tags).
+- **Automated Sitemap:** Real-time generation of `sitemap.xml` from Firestore data.
+- **Internal Wiki:** Server-rendered technical documentation at `/wiki`.
+- **Performance Optimized:** Parallelized data fetching and sub-second load times.
 
+### 🌓 Design System
+- **Hardened Dark Mode:** Consistent UI across all modals and complex dashboards.
+- **Motion Orchestration:** Fluid transitions using `motion/react`.
+- **Responsive Layout:** Locked 70:30 desktop configuration for professional information density.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## 🛠 Tech Stack
+- **Frontend:** React 18, Vite, Tailwind CSS, Motion.
+- **Backend:** Node.js (Express), Firebase (Firestore, Auth).
+- **Security:** ABAC-based Firestore rules, Environment variable management.
+
+## 📦 Deployment
+The application is optimized for Cloud Run containers with dual Vite/Express middleware handling.

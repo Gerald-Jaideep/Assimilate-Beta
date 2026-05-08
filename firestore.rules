@@ -16,8 +16,7 @@ service cloud.firestore {
     // Auth tokens do not contain roles. Roles are stored in the user profile.
     function getUserData(userId) { return get(/databases/$(database)/documents/users/$(userId)).data; }
     function isSuperAdmin() { 
-      let token = request.auth.token;
-      let email = token.get('email', token.get('firebase', {}).get('identities', {}).get('email', [''])[0]);
+      let email = request.auth.token.email;
       let emailLower = email.lower();
       return isSignedIn() && (
         emailLower == 'jaideep@assimilate.one' || 
@@ -45,16 +44,15 @@ service cloud.firestore {
       }
       
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow list: if isSignedIn();
+      allow list: if isSignedIn() && isAdmin();
       allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && 
                        isValidUser(incoming()) && 
                        (incoming().get('roles', ['audience']).hasAny(['audience', 'speaker', 'sponsor', 'internal', 'admin']) || isAdmin());
-      allow update: if (isSignedIn() && request.auth.uid == userId && 
-                       incoming().get('roles', []) == existing().get('roles', []) && 
+      allow update: if (isSignedIn() && ((request.auth.uid == userId && (incoming().get('roles', []) == existing().get('roles', []) || isSuperAdmin())) || isAdmin()) && 
                        incoming().diff(existing()).affectedKeys().hasAny([
                          'displayName', 'photoURL', 'specialties', 'stats', 'bio', 
-                         'onboardingCompleted', 'careerGoal', 'region', 'role'
-                       ])) || isAdmin();
+                         'onboardingCompleted', 'careerGoal', 'region', 'role', 'roles'
+                       ]));
     }
 
     // --- 2. MEDICAL CASES ---

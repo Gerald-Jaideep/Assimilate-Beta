@@ -249,37 +249,106 @@ export default function SpeakerProfile() {
           )}
 
           {/* Cases by this Speaker */}
-          <section className="space-y-6">
-            <div className="flex items-center justify-between">
-               <h2 className="text-2xl font-black italic tracking-tighter dark:text-white">Sessions Presented</h2>
+          <section className="space-y-8">
+            <div className="flex items-center justify-between border-b border-gray-100 dark:border-white/5 pb-4">
+               <h2 className="text-2xl font-black italic tracking-tighter dark:text-white uppercase">Clinical Portfolio</h2>
+               <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 dark:text-white/20 uppercase tracking-widest">
+                  <Rocket size={12} className="text-indigo-500" /> Emerging Science
+               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                {(speakerCases.length > 0 ? speakerCases : Array(2).fill(null)).map((c, i) => (
                  c ? (
-                   <Link key={c.id} to={`/case/${c.id}`}>
-                     <motion.div 
-                       whileHover={{ y: -5 }}
-                       className="group bg-white dark:bg-white/5 rounded-[32px] overflow-hidden border border-gray-100 dark:border-white/10 shadow-sm hover:shadow-xl transition-all"
-                     >
-                       <div className="aspect-video relative overflow-hidden">
-                         <img src={c.thumbnailUrl} className="w-full h-full object-cover group-hover:scale-105 transition-all duration-500" />
-                         <div className="absolute top-4 right-4 px-3 py-1 bg-white/90 dark:bg-black/90 backdrop-blur-md rounded-full text-[10px] font-black tracking-widest dark:text-white">
-                           {c.specialty}
+                   <motion.div 
+                     key={c.id}
+                     initial={{ opacity: 0, y: 20 }}
+                     animate={{ opacity: 1, y: 0 }}
+                     transition={{ delay: i * 0.1 }}
+                     className="group cursor-pointer"
+                   >
+                     <Link to={`/case/${c.id}`} className="block">
+                       <div className="relative aspect-video rounded-[40px] overflow-hidden bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 shadow-sm transition-all duration-500 group-hover:shadow-2xl group-hover:-translate-y-2">
+                         <img src={c.thumbnailUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={c.title} />
+                         
+                         {/* Sophisticated Glassmorphism Overlay */}
+                         <div className="absolute inset-x-0 bottom-0 p-4 translate-y-2 group-hover:translate-y-0 transition-transform duration-500">
+                           <div className="bg-black/60 backdrop-blur-2xl border border-white/10 rounded-[32px] p-5 flex flex-col gap-3 shadow-2xl relative">
+                             <div className="flex items-center justify-between gap-4">
+                               <div className="flex items-center gap-4">
+                                 <div className="relative">
+                                   <img 
+                                     src={speaker.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${speaker.displayName}`} 
+                                     className="w-16 h-16 rounded-2xl object-cover bg-white/10 border-2 border-white/30 shadow-2xl relative z-10 -mt-12 mb-[-8px] transition-transform group-hover:scale-110" 
+                                     alt={speaker.displayName}
+                                   />
+                                   <div className="absolute -bottom-2 -right-2 z-20">
+                                      <img 
+                                        src={`https://flagsapi.com/${speaker.region || 'IN'}/flat/64.png`} 
+                                        className="w-8 h-8 object-contain drop-shadow-xl" 
+                                        alt={speaker.region} 
+                                      />
+                                   </div>
+                                 </div>
+                                 <div className="flex flex-col min-w-0 pt-1">
+                                   <span className="text-sm font-black text-white leading-tight truncate tracking-tighter italic">
+                                     {speaker.displayName}
+                                   </span>
+                                   <div className="flex items-center gap-1.5">
+                                     <span className="text-[10px] font-bold text-white/50 tracking-widest truncate">
+                                       {c.specialty}
+                                     </span>
+                                   </div>
+                                 </div>
+                               </div>
+                               
+                               <div className="flex flex-col items-end gap-1">
+                                 <div className="flex items-center gap-1 bg-white/20 px-2.5 py-1 rounded-xl border border-white/10 backdrop-blur-md">
+                                    <Star size={10} fill="currentColor" className="text-amber-400" />
+                                    <span className="text-[10px] font-black text-white">{c.accreditation?.points || 0} Cr</span>
+                                 </div>
+                                 <div className="flex items-center gap-1 text-white/40 text-[9px] font-black tracking-widest uppercase">
+                                    <Eye size={10} /> {c.views || 0} Views
+                                 </div>
+                               </div>
+                             </div>
+                           </div>
+                         </div>
+
+                         {/* Status/Badge Overlays */}
+                         <div className="absolute top-6 left-6 flex flex-col gap-3">
+                           {c.isSponsored && (
+                             <div className="flex items-center gap-2 bg-black/40 backdrop-blur-2xl border border-white/20 p-1.5 pr-4 rounded-full shadow-2xl">
+                               <div className="w-8 h-8 rounded-full bg-white/95 flex items-center justify-center overflow-hidden border border-white/20">
+                                 {c.sponsorLogoUrl ? (
+                                   <img src={c.sponsorLogoUrl} className="w-full h-full object-contain p-1" alt="Sponsor" />
+                                 ) : (
+                                   <span className="text-[10px] font-black text-black">A</span>
+                                 )}
+                               </div>
+                               <span className="text-[10px] font-black text-white tracking-widest uppercase italic">Grant Funded</span>
+                             </div>
+                           )}
+                           {c.status === 'scheduled' && (
+                             <div className="bg-rose-500 text-white text-[9px] font-black px-4 py-2 rounded-full tracking-widest shadow-2xl border border-rose-600 flex items-center gap-2 animate-pulse">
+                               <div className="w-2 h-2 bg-white rounded-full" />
+                               LIVE CASE
+                             </div>
+                           )}
                          </div>
                        </div>
-                       <div className="p-6">
-                         <h3 className="font-black text-lg leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors dark:text-white">
-                            {c.title}
-                          </h3>
-                         <div className="flex items-center gap-4 mt-4 text-[10px] font-bold text-gray-400 dark:text-gray-500 tracking-widest">
-                           <span className="flex items-center gap-1"><Eye size={12} /> {c.views || 0}</span>
-                           <span className="flex items-center gap-1"><Star size={12} fill="currentColor" className="text-amber-400 border-none" /> {c.accreditation?.points} Points</span>
-                         </div>
+                       
+                       <div className="pt-6 px-2">
+                         <h3 className="text-xl font-black italic leading-tight text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-all line-clamp-2 tracking-tighter uppercase">
+                           {c.title}
+                         </h3>
+                         <p className="mt-2 text-xs font-bold text-gray-400 dark:text-gray-500 line-clamp-2 leading-relaxed">
+                            {c.description || "In-depth clinical exploration of advanced medical technologies and treatment protocols."}
+                         </p>
                        </div>
-                     </motion.div>
-                   </Link>
+                     </Link>
+                   </motion.div>
                  ) : (
-                   <div key={i} className="bg-gray-50 dark:bg-white/5 rounded-[32px] h-64 animate-pulse" />
+                   <div key={i} className="bg-gray-50 dark:bg-white/5 rounded-[40px] h-[340px] animate-pulse border border-gray-100 dark:border-white/5" />
                  )
                ))}
             </div>

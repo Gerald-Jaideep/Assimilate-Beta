@@ -30,6 +30,7 @@ import {
   Eye,
   MessageSquare,
   BookOpen,
+  FileText
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
@@ -52,6 +53,7 @@ export default function CaseDetail() {
   const [isInteracting, setIsInteracting] = useState(false);
   const [activeTab, setActiveTab] = useState<'description' | 'summary' | 'transcript'>('description');
   const [watchProgress, setWatchProgress] = useState(0);
+  const [watchCompleted, setWatchCompleted] = useState(false);
   const [hasEarnedCredits, setHasEarnedCredits] = useState(false);
   const [isReminderSet, setIsReminderSet] = useState(false);
   const [timeLeft, setTimeLeft] = useState<{ d: number, h: number, m: number, s: number } | null>(null);
@@ -61,6 +63,8 @@ export default function CaseDetail() {
   const [relatedCases, setRelatedCases] = useState<any[]>([]);
   const [sponsorData, setSponsorData] = useState<any>(null);
   const [sponsorCases, setSponsorCases] = useState<any[]>([]);
+  const [activeSponsorship, setActiveSponsorship] = useState<any>(null);
+  const [isSponsorshipExpired, setIsSponsorshipExpired] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1);
@@ -177,18 +181,42 @@ export default function CaseDetail() {
         if (snapshot.exists()) {
           const data = { id: snapshot.id, ...snapshot.data() } as any;
           setCaseData(data);
-          setLoading(false); // Set loading to false once main data is here
+          setLoading(false); // Immediate interactivity
 
           // Fetch auxiliary data in background
           const auxPromises: Promise<void>[] = [];
 
-          // 1. Sponsor Details
+          // 1. Sponsor Details & Active Sponsorship
           if (data.isSponsored && data.sponsorId) {
             auxPromises.push((async () => {
               try {
                 const sDoc = await getDoc(doc(db, 'sponsors', data.sponsorId));
                 if (sDoc.exists()) {
-                  setSponsorData({ id: sDoc.id, ...sDoc.data() });
+                  const sponsorInfo = { id: sDoc.id, ...sDoc.data() };
+                  setSponsorData(sponsorInfo);
+                  
+                  // Fetch potential active sponsorships for this sponsor
+                  const shipSnap = await getDocs(query(
+                    collection(db, 'sponsorships'), 
+                    where('sponsorId', '==', data.sponsorId),
+                    where('status', '==', 'active')
+                  ));
+                  
+                  const now = new Date();
+                  const ship = shipSnap.docs.find(d => {
+                    const sData = d.data();
+                    return new Date(sData.startDate) <= now && new Date(sData.endDate) >= now;
+                  });
+
+                  if (ship) {
+                    setActiveSponsorship({ id: ship.id, ...ship.data() });
+                    setIsSponsorshipExpired(false);
+                  } else {
+                    // Check if there was one that expired
+                    const expiredShip = shipSnap.docs.find(d => new Date(d.data().endDate) < now);
+                    if (expiredShip) setIsSponsorshipExpired(true);
+                  }
+
                   const sQ = query(collection(db, 'cases'), where('sponsorId', '==', data.sponsorId), limit(6));
                   const sSnap = await getDocs(sQ);
                   setSponsorCases(sSnap.docs.filter(d => d.id !== id).map(d => ({ id: d.id, ...d.data() })));
@@ -261,10 +289,15 @@ export default function CaseDetail() {
             })());
           }
 
-          await Promise.all(auxPromises);
+          // Use Promise.allSettled to ensure background data doesn't block if one fails
+          await Promise.allSettled(auxPromises);
+        } else {
+          setLoading(false);
+          toast.error("Case not found");
+          navigate('/cases');
         }
       } catch (err) {
-        handleFirestoreError(err, OperationType.GET, 'case_detail');
+        console.error("Error fetching case:", err);
         setLoading(false);
       }
     }
@@ -445,6 +478,23 @@ export default function CaseDetail() {
     }
   };
 
+  const handleBrochureDownload = async (brochureUrl: string) => {
+    if (!user) {
+      toast.info("Admission Required", { description: "Log in to access clinical materials." });
+      return;
+    }
+    
+    // In a real app, we follow the link or open it
+    window.open(brochureUrl, '_blank');
+    
+    // Track metric
+    if (activeSponsorship?.id) {
+       updateDoc(doc(db, 'sponsorships', activeSponsorship.id), {
+          "metrics.brochureDownloads": increment(1)
+       }).catch(e => console.error("Metric fail", e));
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center h-screen bg-[#F5F5F3] dark:bg-[#0A0A0A] text-gray-400 dark:text-white/50 font-bold tracking-widest animate-pulse">Synchronizing Medical Data...</div>;
   if (!caseData) return <div className="p-12 text-center text-gray-500 dark:text-white/50">Case not found.</div>;
 
@@ -452,10 +502,10 @@ export default function CaseDetail() {
     <div className="min-h-screen bg-[#F5F5F3] dark:bg-[#0A0A0A] p-4 md:p-8 space-y-8 animate-in fade-in duration-500 transition-colors">
       <Celebration active={showCelebration} onComplete={() => setShowCelebration(false)} type={celebrationType} />
       
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-10 gap-8">
         
         {/* Main Content Area */}
-        <div className="space-y-8 min-w-0 order-1">
+        <div className="lg:col-span-7 space-y-8 min-w-0 order-1">
           
           {/* Header Section */}
           <div className="space-y-4">
@@ -955,7 +1005,7 @@ export default function CaseDetail() {
         </div>
 
         {/* Sidebar / Stats Panel */}
-        <aside className="space-y-4 lg:space-y-6 min-w-0 order-2">
+        <aside className="lg:col-span-3 space-y-4 lg:space-y-6 min-w-0 order-2">
           
           {/* My Stats Widget */}
           <div className="bg-white dark:bg-white/5 rounded-[32px] p-5 lg:p-6 border border-gray-100 dark:border-white/5 space-y-5 shadow-xl text-gray-900 dark:text-white">
@@ -1040,6 +1090,67 @@ export default function CaseDetail() {
                </>
              )}
           </div>
+
+          {/* Educational Grant Resources */}
+          {caseData.isSponsored && sponsorData && (
+            <div className="bg-white dark:bg-white/5 rounded-[32px] p-6 border border-gray-100 dark:border-white/5 space-y-6 shadow-sm overflow-hidden relative group">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest italic">Institutional Grant Resources</h3>
+                <ShieldCheck size={14} className="text-gray-300 group-hover:text-indigo-500 transition-colors" />
+              </div>
+              
+              <div className="space-y-4">
+                 {isSponsorshipExpired ? (
+                   <div className="p-6 bg-gray-50 dark:bg-black/20 rounded-2xl border border-dashed border-gray-200 dark:border-white/5 text-center space-y-2">
+                      <Lock size={20} className="mx-auto text-gray-300" />
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Resources Deactivated</p>
+                      <p className="text-[8px] font-medium text-gray-400 italic">Access to this sponsor's clinical brochures has expired with the grant period.</p>
+                   </div>
+                 ) : sponsorData.assets?.filter((a: any) => a.type === 'brochure').length > 0 ? (
+                   sponsorData.assets.filter((a: any) => a.type === 'brochure').map((a: any, i: number) => (
+                     <button 
+                       key={i} 
+                       onClick={() => handleBrochureDownload(a.url)}
+                       className="w-full p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-100 dark:border-white/5 flex items-center justify-between group/item hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-100 transition-all"
+                     >
+                       <div className="flex items-center gap-3">
+                          <div className="p-2 bg-white dark:bg-black rounded-lg border border-gray-100 dark:border-white/5">
+                             <FileText size={16} className="text-indigo-500" />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-[10px] font-black text-gray-900 dark:text-white line-clamp-1 mb-0.5">{a.name}</p>
+                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">Clinical Brochure • PDF</p>
+                          </div>
+                       </div>
+                       <Download size={14} className="text-gray-300 group-hover/item:text-indigo-500" />
+                     </button>
+                   ))
+                 ) : (
+                   <div className="p-6 bg-gray-50 dark:bg-black/20 rounded-2xl border border-dashed border-gray-200 dark:border-white/5 text-center">
+                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">No Electronic Materials</p>
+                   </div>
+                 )}
+              </div>
+
+              {sponsorData.website && !isSponsorshipExpired && (
+                <a 
+                  href={sponsorData.website} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  onClick={() => {
+                    if (activeSponsorship?.id) {
+                      updateDoc(doc(db, 'sponsorships', activeSponsorship.id), {
+                         "metrics.websiteClicks": increment(1)
+                      }).catch(e => console.error(e));
+                    }
+                  }}
+                  className="w-full bg-indigo-600 text-white py-3 rounded-xl flex items-center justify-center gap-2 font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+                >
+                  Explore Advanced Hub <ExternalLink size={12} />
+                </a>
+              )}
+            </div>
+          )}
 
           {/* ICD10 Related Specialities */}
           <div className="bg-white dark:bg-white/5 rounded-[32px] p-5 lg:p-6 border border-gray-100 dark:border-white/5 space-y-3">

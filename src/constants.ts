@@ -20,6 +20,11 @@ export const SPECIALTIES: Record<string, Specialty> = {
   "Pediatrics": { name: "Pediatrics", color: "#FBBF24" }, // Yellow
   "Orthopedics": { name: "Orthopedics", color: "#92400E" }, // Brown
   "Dermatology": { name: "Dermatology", color: "#FBCFE8" }, // Light Pink
+  "Dentistry & Oral Surgery": { name: "Dentistry & Oral Surgery", color: "#78716C" }, // Stone
+  "Anesthesiology & Pain Medicine": { name: "Anesthesiology & Pain Medicine", color: "#71717A" }, // Zinc
+  "Occupational Medicine": { name: "Occupational Medicine", color: "#F97316" }, // Orange
+  "Nutrition & Dietetics": { name: "Nutrition & Dietetics", color: "#84CC16" }, // Lime
+  "General Practice": { name: "General Practice", color: "#3B82F6" }, // Blue
 };
 
 export interface Country {

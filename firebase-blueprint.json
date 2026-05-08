@@ -99,6 +99,26 @@
         "presenterBio": { "type": "string" },
         "presenterQualifications": { "type": "string" },
         "presenterCountry": { "type": "string" },
+        "caseType": { "type": "string", "enum": ["live", "recorded", "structured"] },
+        "clinicalData": {
+          "type": "object",
+          "properties": {
+            "presentation": { "type": "string" },
+            "history": { "type": "string" },
+            "examination": { "type": "string" },
+            "investigations": { "type": "array", "items": { "type": "object" } },
+            "differentialDiagnosis": { "type": "array", "items": { "type": "string" } },
+            "management": { "type": "string" },
+            "outcome": { "type": "string" },
+            "observations": { "type": "string" },
+            "crfData": { "type": "object" }
+          }
+        },
+        "reviewerId": { "type": "string" },
+        "reviewerName": { "type": "string" },
+        "reviewerPhotoURL": { "type": "string" },
+        "reviewerCredentials": { "type": "string" },
+        "reviewStatus": { "type": "string", "enum": ["pending", "reviewed"] },
         "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
         "scheduledAt": { "type": "string", "format": "date-time" },
         "googleMeetLink": { "type": "string" },
@@ -149,6 +169,48 @@
         "reminderSet": { "type": "boolean" },
         "registeredAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "SponsorshipPackage": {
+      "title": "Sponsorship Package",
+      "description": "Pre-defined sponsorship levels and pricing",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "durationMonths": { "type": "number", "enum": [1, 3, 6, 12] },
+        "cost": { "type": "number" },
+        "benefits": { "type": "array", "items": { "type": "string" } },
+        "category": { "type": "string", "enum": ["Standard", "Premium", "Elite"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "durationMonths", "cost"]
+    },
+    "Sponsorship": {
+      "title": "Sponsorship",
+      "description": "An active sponsorship agreement",
+      "type": "object",
+      "properties": {
+        "sponsorId": { "type": "string" },
+        "sponsorName": { "type": "string" },
+        "packageId": { "type": "string" },
+        "packageName": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["single_session", "multiple_sessions", "specialty", "speaker_region"] },
+        "targetId": { "type": "string" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["active", "expired", "pending"] },
+        "costPaid": { "type": "number" },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "views": { "type": "number" },
+            "brochureDownloads": { "type": "number" },
+            "websiteClicks": { "type": "number" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sponsorId", "packageId", "targetType", "startDate", "endDate"]
     }
   },
   "firestore": {
@@ -163,6 +225,14 @@
     "sponsors/{sponsorId}": {
       "schema": "Sponsor",
       "description": "Healthcare industry sponsors"
+    },
+    "sponsorship_packages/{packageId}": {
+      "schema": "SponsorshipPackage",
+      "description": "Available sponsorship levels"
+    },
+    "sponsorships/{sponsorshipId}": {
+      "schema": "Sponsorship",
+      "description": "Active and past sponsorships"
     },
     "cases/{caseId}/registrations/{userId}": {
       "schema": "Registration",

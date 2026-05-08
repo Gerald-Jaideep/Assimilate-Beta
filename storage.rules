@@ -13,17 +13,17 @@ service firebase.storage {
     }
     
     function isSuperAdmin() {
-      let token = request.auth.token;
-      let email = token.get('email', token.get('firebase', {}).get('identities', {}).get('email', [''])[0]);
+      let email = request.auth.token.email;
       let emailLower = email.lower();
       return isSignedIn() && (
         emailLower == 'jaideep@assimilate.one' || 
-        emailLower == 'jaideep@medvarsity.com'
+        emailLower == 'jaideep@medvarsity.com' ||
+        emailLower == 'jaideep@medvarsity.org'
       );
     }
     
     function isInternal() {
-      return isSignedIn() && (isSuperAdmin() || (exists(/databases/(default)/documents/users/$(request.auth.uid)) && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.get('role', '') == 'internal'));
+      return isSignedIn() && (isSuperAdmin() || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'internal' || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.roles.hasAny(['internal', 'admin']));
     }
 
     // Default: Deny all

@@ -76,15 +76,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    return onAuthStateChanged(auth, async (user) => {
+    console.log("Auth visibility: Initializing onAuthStateChanged");
+    
+    // Safety timeout for the entire auth initialization
+    const globalTimeoutId = setTimeout(() => {
+      if (loading) {
+        console.warn("Global auth initialization timeout reached");
+        setLoading(false);
+      }
+    }, 15000);
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log("Auth state change detected:", user ? "User logged in" : "No user");
       setUser(user);
+      
       if (user) {
-        await fetchProfile(user.uid, user.email, user.photoURL, user.displayName);
+        // Use a Promise.race to ensure profile fetching doesn't block the app indefinitely
+        const profilePromise = fetchProfile(user.uid, user.email, user.photoURL, user.displayName);
+        const timeoutPromise = new Promise((resolve) => {
+          setTimeout(() => {
+            console.warn("Profile fetch timed out after 10 seconds");
+            resolve(null);
+          }, 10000);
+        });
+
+        try {
+          await Promise.race([profilePromise, timeoutPromise]);
+        } catch (err) {
+          console.error("Profile fetch error:", err);
+        }
       } else {
         setProfile(null);
       }
+      
+      console.log("Setting app loading to false");
+      clearTimeout(globalTimeoutId);
       setLoading(false);
     });
+
+    return () => {
+      unsubscribe();
+      clearTimeout(globalTimeoutId);
+    };
   }, []);
 
   const refreshProfile = async () => {

@@ -25,6 +25,11 @@ export default function CaseFeed() {
 
   useEffect(() => {
     async function fetchData() {
+      const timeoutId = setTimeout(() => {
+        setLoading(false); // Force load even if Firestore is slow
+        console.warn("Case feed data fetch timed out");
+      }, 10000);
+
       try {
         const q = query(
           collection(db, 'cases'), 
@@ -35,7 +40,7 @@ export default function CaseFeed() {
         const caseList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setCases(caseList);
         localStorage.setItem('assimilate_cases_cache', JSON.stringify(caseList));
-
+        
         if (user) {
           try {
             const progQ = query(
@@ -44,7 +49,6 @@ export default function CaseFeed() {
             );
             const progSnap = await getDocs(progQ);
             const pData = progSnap.docs.map(d => d.data());
-            // Sort manually by updatedAt desc
             pData.sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
             setProgressData(pData);
           } catch (e) {
@@ -52,19 +56,16 @@ export default function CaseFeed() {
           }
         }
 
-        // Calculate specialties
         const contentSpecs = new Set<string>();
         caseList.forEach((c: any) => {
           if (c.specialty) contentSpecs.add(c.specialty);
         });
-
-        // Only show 'All Specialties' and specialties that actually have content
         const availableSpecs = ['All Specialties', ...Array.from(contentSpecs).sort()];
-        
         setSpecialties(availableSpecs);
       } catch (err) {
-        handleFirestoreError(err, OperationType.LIST, 'cases');
+        console.error("Failed to fetch cases:", err);
       } finally {
+        clearTimeout(timeoutId);
         setLoading(false);
       }
     }
@@ -81,6 +82,7 @@ export default function CaseFeed() {
 
   const userCountryCode = COUNTRIES.find(c => c.name === profile?.region || c.name === 'India')?.code;
   const recommendedCases = cases.filter(c => c.presenterCountry === userCountryCode).slice(0, 3);
+  const upcomingSponsored = cases.filter(c => c.status === 'scheduled' && c.isSponsored === true).slice(0, 4);
 
   const filteredCases = selectedSpecialty === 'All Specialties' 
     ? cases 
@@ -209,6 +211,61 @@ export default function CaseFeed() {
                </Link>
              ))}
           </div>
+        </section>
+      )}
+
+      {/* Upcoming Sponsored Sessions */}
+      {upcomingSponsored.length > 0 && selectedSpecialty === 'All Specialties' && (
+        <section className="space-y-8">
+           <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                 <Video className="text-rose-500" size={24} />
+                 <h2 className="text-2xl font-black tracking-tighter text-gray-900 dark:text-white uppercase italic">Upcoming Sponsored Live Hubs</h2>
+              </div>
+              <span className="text-[10px] font-black text-gray-400 dark:text-white/20 uppercase tracking-[0.2em] animate-pulse">BROADCASTS STARTING SOON</span>
+           </div>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {upcomingSponsored.map((c) => (
+                <Link key={c.id} to={`/case/${c.id}`} className="block group">
+                   <div className="bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-[40px] overflow-hidden flex flex-col md:flex-row shadow-sm hover:shadow-2xl transition-all duration-500 group-hover:-translate-y-1">
+                      <div className="relative md:w-1/3 aspect-video md:aspect-square">
+                         <img src={c.thumbnailUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt={c.title} />
+                         <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors" />
+                         <div className="absolute top-4 left-4 bg-rose-500 text-white text-[8px] font-black px-3 py-1.5 rounded-full tracking-widest shadow-xl ring-1 ring-white/20">LIVE</div>
+                      </div>
+                      <div className="flex-1 p-8 flex flex-col justify-between space-y-4">
+                         <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                               <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/40 px-2 py-0.5 rounded italic">Grant Supported</span>
+                               <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{c.specialty}</span>
+                            </div>
+                            <h3 className="text-xl font-black italic tracking-tighter leading-tight group-hover:text-rose-500 transition-colors uppercase line-clamp-2">
+                               {c.title}
+                            </h3>
+                         </div>
+                         <div className="flex items-center justify-between border-t border-gray-50 dark:border-white/5 pt-4">
+                            <div className="flex items-center gap-3">
+                               <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center overflow-hidden border border-gray-100 dark:border-white/10">
+                                  {c.sponsorLogoUrl ? (
+                                    <img src={c.sponsorLogoUrl} className="w-full h-full object-contain p-1" alt="Sponsor" />
+                                  ) : (
+                                    <Star size={14} className="text-indigo-400" />
+                                  )}
+                               </div>
+                               <div className="flex flex-col">
+                                  <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Presenter</span>
+                                  <span className="text-[10px] font-bold text-gray-900 dark:text-white leading-none">{c.presenterName}</span>
+                               </div>
+                            </div>
+                            <button className="bg-gray-900 dark:bg-white text-white dark:text-black p-3 rounded-2xl hover:scale-110 active:scale-95 transition-all shadow-xl">
+                               <ChevronRight size={18} />
+                            </button>
+                         </div>
+                      </div>
+                   </div>
+                </Link>
+              ))}
+           </div>
         </section>
       )}
 

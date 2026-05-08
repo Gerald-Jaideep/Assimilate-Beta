@@ -1,17 +1,36 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer, initializeFirestore } from 'firebase/firestore';
 import { getAnalytics } from 'firebase/analytics';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-const app = initializeApp(firebaseConfig);
+// Support both environment variables and fallback to JSON for AI Studio convenience
+const config = {
+  apiKey: (import.meta.env.VITE_FIREBASE_API_KEY as string) || firebaseConfig.apiKey,
+  authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string) || firebaseConfig.authDomain,
+  projectId: (import.meta.env.VITE_FIREBASE_PROJECT_ID as string) || firebaseConfig.projectId,
+  storageBucket: (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string) || firebaseConfig.storageBucket,
+  messagingSenderId: (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string) || firebaseConfig.messagingSenderId,
+  appId: (import.meta.env.VITE_FIREBASE_APP_ID as string) || firebaseConfig.appId,
+  measurementId: (import.meta.env.VITE_FIREBASE_MEASUREMENT_ID as string) || firebaseConfig.measurementId,
+  firestoreDatabaseId: (import.meta.env.VITE_FIREBASE_DATABASE_ID as string) || firebaseConfig.firestoreDatabaseId
+};
+
+const app = initializeApp(config);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app, "gs://assimilate-live.firebasestorage.app");
+
+// Initialize Firestore - avoid passing "(default)" explicitly as it can cause issues on some SDK versions
+// Enable experimentalForceLongPolling to improve reliability in some network environments (like proxied previews)
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+  ignoreUndefinedProperties: true,
+}, config.firestoreDatabaseId && config.firestoreDatabaseId !== '(default)' ? config.firestoreDatabaseId : undefined);
+
+export const storage = getStorage(app, config.storageBucket ? `gs://${config.storageBucket}` : undefined);
 
 // Initialize analytics only if measurementId is present and in browser
-export const analytics = typeof window !== 'undefined' && (firebaseConfig as any).measurementId 
+export const analytics = typeof window !== 'undefined' && config.measurementId 
   ? getAnalytics(app) 
   : null;
 
@@ -62,26 +81,4 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Validate connection
-async function testConnection() {
-  try {
-    // Attempting a simple read to verify configuration
-    await getDocFromServer(doc(db, 'system_check', 'connection'));
-  } catch (error) {
-    if (error instanceof Error) {
-      const msg = error.message.toLowerCase();
-      const isPermissionError = msg.includes('permission-denied') || 
-                               msg.includes('insufficient permissions');
-      
-      if (msg.includes('the client is offline')) {
-        console.error("Firebase is reporting as offline. Please check your network or project configuration.");
-      } else if (isPermissionError) {
-        // This is actually a success in terms of connectivity
-        console.log("Firestore reached (Permission check complete).");
-      } else {
-        console.error("Firebase connection error:", error.message);
-      }
-    }
-  }
-}
-testConnection();
+// Removed testConnection() call - diagnostic check no longer needed here as it may interfere with SDK startup in restricted networks.

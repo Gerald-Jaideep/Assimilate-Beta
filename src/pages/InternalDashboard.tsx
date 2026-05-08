@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { Celebration } from '../components/Celebration';
-import { Plus, Settings, Video, FileText, BarChart3, ChevronRight, ChevronLeft, Sparkles, Loader2, PlayCircle, Globe, ShieldCheck, Users, X, Search, Image, CheckCircle2, Rocket, Calendar, Flag, Filter, RefreshCw, User, Trash2, Edit3, Mail } from 'lucide-react';
+import { Plus, Settings, Video, FileText, BarChart3, ChevronRight, ChevronLeft, Sparkles, Loader2, PlayCircle, Globe, ShieldCheck, Users, X, Search, Image, CheckCircle2, Rocket, Calendar, Flag, Filter, RefreshCw, User, Trash2, Edit3, Mail, DollarSign } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { generateDummyCases, generateCaseImage, generateCalendarEvents } from '../services/geminiService';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, getDay, addDays, subDays, startOfWeek, endOfWeek, isToday as isDateToday, startOfQuarter, endOfQuarter, startOfYear, endOfYear, addYears, subYears, addQuarters, subQuarters } from 'date-fns';
@@ -33,7 +33,9 @@ export default function InternalDashboard() {
   const [isAddingSponsor, setIsAddingSponsor] = useState(false);
   const [activeTab, setActiveTab] = useState<'cases' | 'sponsors' | 'live' | 'users' | 'calendar'>('cases');
   const [wizardStep, setWizardStep] = useState(0); // 0 for type selection
-  const [caseType, setCaseType] = useState<'live' | 'recorded' | null>(null);
+  const [caseType, setCaseType] = useState<'live' | 'recorded' | 'structured' | null>(null);
+  const [reviewerSearch, setReviewerSearch] = useState('');
+  const [showReviewerResults, setShowReviewerResults] = useState(false);
   const [calendarView, setCalendarView] = useState<'week' | 'month' | 'quarter' | 'year'>('month');
   const [calendarDate, setCalendarDate] = useState(new Date(2026, 4, 1)); // Start at May 2026
   const [selectedCountries, setSelectedCountries] = useState<string[]>(['IN', 'US', 'AE', 'AU']);
@@ -60,6 +62,21 @@ export default function InternalDashboard() {
     postRollVideo: ''
   });
 
+  const [sponsorshipPackages, setSponsorshipPackages] = useState<any[]>([]);
+  const [isAddingPackage, setIsAddingPackage] = useState(false);
+  const [editingPackage, setEditingPackage] = useState<any>(null);
+  const [activeSponsorships, setActiveSponsorships] = useState<any[]>([]);
+
+  // Sponsorship Package Form State
+  const [newPackage, setNewPackage] = useState({
+    name: '',
+    description: '',
+    durationMonths: 3,
+    cost: 5000,
+    category: 'Standard',
+    benefits: [] as string[]
+  });
+
   useEffect(() => {
     async function fetchSponsors() {
       if (!user) return;
@@ -73,6 +90,22 @@ export default function InternalDashboard() {
     }
     fetchSponsors();
   }, [user]);
+
+  useEffect(() => {
+    async function fetchSponsorshipData() {
+      if (!user || activeTab !== 'sponsorships') return;
+      try {
+        const pkgSnap = await getDocs(collection(db, 'sponsorship_packages'));
+        setSponsorshipPackages(pkgSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        
+        const shipSnap = await getDocs(collection(db, 'sponsorships'));
+        setActiveSponsorships(shipSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (err) {
+        console.error("Error fetching sponsorship data:", err);
+      }
+    }
+    fetchSponsorshipData();
+  }, [user, activeTab]);
 
   // Form State
   const [newCase, setNewCase] = useState({
@@ -99,7 +132,24 @@ export default function InternalDashboard() {
     completionThreshold: 70, // Basic 70% requirement
     isSponsored: false,
     sponsorId: '',
-    expiryDate: ''
+    expiryDate: '',
+    // Structured Clinical Data (CRF)
+    clinicalData: {
+      presentation: '',
+      history: '',
+      examination: '',
+      investigations: [] as any[],
+      differentialDiagnosis: [] as string[],
+      management: '',
+      outcome: '',
+      observations: '',
+    },
+    reviewerId: '',
+    reviewerName: '',
+    reviewerPhotoURL: '',
+    reviewerCredentials: '',
+    reviewStatus: 'pending',
+    clinicalPolicyAccepted: false
   });
 
   useEffect(() => {
@@ -274,6 +324,18 @@ export default function InternalDashboard() {
     }));
     setSpeakerSearch(speaker.displayName || '');
     setShowSpeakerResults(false);
+  };
+
+  const handleReviewerSelect = (reviewer: any) => {
+    setNewCase(prev => ({
+      ...prev,
+      reviewerId: reviewer.uid,
+      reviewerName: reviewer.displayName || '',
+      reviewerPhotoURL: reviewer.photoURL || '',
+      reviewerCredentials: `${reviewer.qualifications || ''} • Peer Reviewer`
+    }));
+    setReviewerSearch(reviewer.displayName || '');
+    setShowReviewerResults(false);
   };
 
   const handleGenerateThumbnail = async () => {
@@ -467,7 +529,12 @@ export default function InternalDashboard() {
         if (val !== undefined) {
           cleanCase[key] = val;
         } else {
-          cleanCase[key] = ''; // Fallback to empty string for safety
+          // If clinicalData, preserve structure
+          if (key === 'clinicalData') {
+             cleanCase[key] = val;
+          } else {
+             cleanCase[key] = ''; // Fallback to empty string for safety
+          }
         }
       });
 
@@ -544,9 +611,26 @@ export default function InternalDashboard() {
       completionThreshold: 70,
       isSponsored: false,
       sponsorId: '',
-      expiryDate: ''
+      expiryDate: '',
+      clinicalData: {
+        presentation: '',
+        history: '',
+        examination: '',
+        investigations: [] as any[],
+        differentialDiagnosis: [] as string[],
+        management: '',
+        outcome: '',
+        observations: '',
+      },
+      reviewerId: '',
+      reviewerName: '',
+      reviewerPhotoURL: '',
+      reviewerCredentials: '',
+      reviewStatus: 'pending',
+      clinicalPolicyAccepted: false
     });
     setSpeakerSearch('');
+    setReviewerSearch('');
   };
 
   const calculateProfileCompletion = (data: any) => {
@@ -672,6 +756,45 @@ export default function InternalDashboard() {
     }
   };
 
+  const handlePackageSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const data = {
+        ...newPackage,
+        createdAt: editingPackage ? editingPackage.createdAt : new Date().toISOString()
+      };
+      if (editingPackage) {
+        await setDoc(doc(db, 'sponsorship_packages', editingPackage.id), data);
+      } else {
+        await addDoc(collection(db, 'sponsorship_packages'), data);
+      }
+      toast.success("Package saved successfully");
+      setIsAddingPackage(false);
+      setEditingPackage(null);
+      // Refresh
+      const pkgSnap = await getDocs(collection(db, 'sponsorship_packages'));
+      setSponsorshipPackages(pkgSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to save package");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const calculateROI = (sponsorship: any) => {
+    const cost = sponsorship.costPaid || 0;
+    const views = sponsorship.metrics?.views || 0;
+    const downloads = sponsorship.metrics?.brochureDownloads || 0;
+    const clicks = sponsorship.metrics?.websiteClicks || 0;
+    
+    // Abstract weighting for ROI score
+    const score = (views * 0.1) + (downloads * 5) + (clicks * 2);
+    if (cost === 0) return score;
+    return (score / cost) * 100;
+  };
+
   return (
     <div className="space-y-8">
       <Celebration active={showCelebration} onComplete={() => setShowCelebration(false)} type={celebrationType} />
@@ -692,7 +815,13 @@ export default function InternalDashboard() {
               onClick={() => setActiveTab('sponsors')}
               className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all", activeTab === 'sponsors' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
             >
-              Sponsors
+              Sponsor Partners
+            </button>
+            <button 
+              onClick={() => setActiveTab('sponsorships')}
+              className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all", activeTab === 'sponsorships' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
+            >
+              Sponsorship CMS
             </button>
             <button 
               onClick={() => setActiveTab('users')}
@@ -1563,6 +1692,191 @@ export default function InternalDashboard() {
             )}
           </div>
         </div>
+      ) : activeTab === 'sponsorships' ? (
+        <div className="space-y-8 animate-in fade-in duration-500">
+           {/* ROI Overview */}
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[
+                { label: 'Total Funding Received', value: `$${activeSponsorships.reduce((acc, curr) => acc + (curr.costPaid || 0), 0).toLocaleString()}`, icon: DollarSign, color: 'text-indigo-600' },
+                { label: 'Active Sponsorships', value: activeSponsorships.filter(s => s.status === 'active').length, icon: ShieldCheck, color: 'text-emerald-500' },
+                { label: 'Avg Network ROI', value: `${(activeSponsorships.reduce((acc, curr) => acc + calculateROI(curr), 0) / (activeSponsorships.length || 1)).toFixed(1)}%`, icon: Rocket, color: 'text-amber-500' },
+              ].map((stat, i) => (
+                <div key={i} className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm space-y-4">
+                   <div className={cn("p-4 rounded-3xl w-fit bg-gray-50", stat.color)}>
+                     <stat.icon size={24} />
+                   </div>
+                   <div>
+                     <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">{stat.label}</p>
+                     <p className="text-4xl font-black italic tracking-tighter">{stat.value}</p>
+                   </div>
+                </div>
+              ))}
+           </div>
+
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-8">
+                 <div className="bg-white rounded-[40px] border border-gray-100 overflow-hidden shadow-sm">
+                    <div className="p-8 border-b border-gray-50 flex items-center justify-between">
+                       <h2 className="font-black text-xl italic tracking-tighter uppercase">Available Packages</h2>
+                       <button 
+                         onClick={() => {
+                           setEditingPackage(null);
+                           setNewPackage({ name: '', description: '', durationMonths: 3, cost: 5000, category: 'Standard', benefits: [] });
+                           setIsAddingPackage(true);
+                         }}
+                         className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-all text-xs"
+                       >
+                         <Plus size={16} /> Create New Package
+                       </button>
+                    </div>
+                    
+                    <div className="p-8">
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {sponsorshipPackages.map(pkg => (
+                            <div key={pkg.id} className="p-6 rounded-[32px] border-2 border-gray-50 hover:border-indigo-100 transition-all space-y-4 group">
+                               <div className="flex justify-between items-start">
+                                  <div className="space-y-1">
+                                    <h3 className="font-black text-lg uppercase italic tracking-tighter">{pkg.name}</h3>
+                                    <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-black uppercase">{pkg.category}</span>
+                                  </div>
+                                  <p className="text-2xl font-black text-indigo-600">${pkg.cost.toLocaleString()}</p>
+                               </div>
+                               <p className="text-xs text-gray-500 font-medium line-clamp-2">{pkg.description}</p>
+                               <div className="flex items-center justify-between pt-4 border-t border-gray-50">
+                                  <span className="text-[10px] font-black uppercase text-gray-400">{pkg.durationMonths} Month Duration</span>
+                                  <div className="flex gap-2">
+                                     <button onClick={() => {
+                                       setEditingPackage(pkg);
+                                       setNewPackage(pkg);
+                                       setIsAddingPackage(true);
+                                     }} className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors">
+                                       <Edit3 size={14} />
+                                     </button>
+                                     <button className="p-1.5 text-gray-400 hover:text-red-500 transition-colors">
+                                       <Trash2 size={14} />
+                                     </button>
+                                  </div>
+                               </div>
+                            </div>
+                          ))}
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="bg-white rounded-[40px] border border-gray-100 overflow-hidden shadow-sm">
+                    <div className="p-8 border-b border-gray-50">
+                       <h2 className="font-black text-xl italic tracking-tighter uppercase">Theme & Marketing Generator</h2>
+                    </div>
+                    <div className="p-8 space-y-6">
+                       <div className="p-6 rounded-3xl bg-indigo-50/30 border border-indigo-100 space-y-4">
+                          <p className="text-xs text-indigo-600 font-bold leading-relaxed">
+                            Generate persuasive marketing content for specific sponsorship themes to attract new partners.
+                          </p>
+                          <button className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg">
+                             <Sparkles size={18} /> Generate Marketing Pitch
+                          </button>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+
+              <div className="space-y-8">
+                 <div className="bg-white rounded-[40px] border border-gray-100 overflow-hidden shadow-sm">
+                    <div className="p-8 border-b border-gray-50">
+                       <h2 className="font-black text-xl italic tracking-tighter uppercase">Current ROI Performance</h2>
+                    </div>
+                    <div className="p-6 space-y-4">
+                       {activeSponsorships.map(ship => (
+                         <div key={ship.id} className="p-5 bg-gray-50 rounded-3xl border border-gray-100 space-y-4">
+                            <div className="flex justify-between items-start">
+                               <div>
+                                  <p className="font-black text-sm uppercase italic tracking-tighter text-indigo-600">{ship.sponsorName}</p>
+                                  <p className="text-[10px] font-bold text-gray-400">{ship.packageName}</p>
+                               </div>
+                               <div className="text-right">
+                                  <p className="text-xs font-black text-emerald-600">{calculateROI(ship).toFixed(1)}% ROI</p>
+                                  <p className="text-[9px] font-bold text-gray-400 uppercase">{ship.status}</p>
+                               </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                               <div className="bg-white p-2 rounded-xl text-center">
+                                  <p className="text-[8px] font-black uppercase text-gray-400">Views</p>
+                                  <p className="font-black text-xs">{ship.metrics?.views || 0}</p>
+                               </div>
+                               <div className="bg-white p-2 rounded-xl text-center">
+                                  <p className="text-[8px] font-black uppercase text-gray-400">Downloads</p>
+                                  <p className="font-black text-xs">{ship.metrics?.brochureDownloads || 0}</p>
+                               </div>
+                               <div className="bg-white p-2 rounded-xl text-center">
+                                  <p className="text-[8px] font-black uppercase text-gray-400">Clicks</p>
+                                  <p className="font-black text-xs">{ship.metrics?.websiteClicks || 0}</p>
+                               </div>
+                            </div>
+                         </div>
+                       ))}
+                    </div>
+                 </div>
+              </div>
+           </div>
+
+           {isAddingPackage && (
+             <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="bg-white rounded-[40px] w-full max-w-xl p-10 space-y-8 shadow-2xl"
+                >
+                   <div className="flex justify-between items-center">
+                      <h2 className="font-black text-2xl uppercase italic tracking-tighter">Configure Package</h2>
+                      <button onClick={() => setIsAddingPackage(false)}><X size={24} /></button>
+                   </div>
+                   
+                   <form onSubmit={handlePackageSubmit} className="space-y-6">
+                      <div className="space-y-2">
+                         <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Package Name</label>
+                         <input type="text" required value={newPackage.name} onChange={(e) => setNewPackage({...newPackage, name: e.target.value})} className="w-full bg-gray-50 border-gray-100 rounded-2xl p-4 font-bold outline-none" placeholder="Elite Multi-Session Grant" />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                         <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Cost ($)</label>
+                            <input type="number" required value={newPackage.cost} onChange={(e) => setNewPackage({...newPackage, cost: parseInt(e.target.value)})} className="w-full bg-gray-50 border-gray-100 rounded-2xl p-4 font-bold outline-none" />
+                         </div>
+                         <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Duration</label>
+                            <select value={newPackage.durationMonths} onChange={(e) => setNewPackage({...newPackage, durationMonths: parseInt(e.target.value)})} className="w-full bg-gray-50 border-gray-100 rounded-2xl p-4 font-bold outline-none">
+                               <option value={1}>1 Month</option>
+                               <option value={3}>3 Months</option>
+                               <option value={6}>6 Months</option>
+                               <option value={12}>12 Months</option>
+                            </select>
+                         </div>
+                      </div>
+
+                      <div className="space-y-2">
+                         <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Tier Category</label>
+                         <div className="flex gap-2">
+                            {['Standard', 'Premium', 'Elite'].map(cat => (
+                              <button 
+                                key={cat}
+                                type="button"
+                                onClick={() => setNewPackage({...newPackage, category: cat})}
+                                className={cn("flex-1 py-3 rounded-xl font-bold transition-all text-xs border", newPackage.category === cat ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-400 border-gray-100 hover:border-indigo-100")}
+                              >
+                                {cat}
+                              </button>
+                            ))}
+                         </div>
+                      </div>
+
+                      <button type="submit" disabled={isSubmitting} className="w-full bg-black text-white py-5 rounded-2xl font-black uppercase italic tracking-tighter hover:bg-gray-800 transition-all disabled:opacity-50">
+                        {isSubmitting ? "Saving Config..." : "Activate Package Offering"}
+                      </button>
+                   </form>
+                </motion.div>
+             </div>
+           )}
+        </div>
       ) : null}
 
       {isCreating && (
@@ -1579,7 +1893,7 @@ export default function InternalDashboard() {
                   Case Submission Wizard
                 </h2>
                 <div className="flex items-center gap-2 mt-2">
-                  {[1, 2, 3, 4].map(step => (
+                  {[1, 2, 3, 4, 5].map(step => (
                     <div 
                       key={step} 
                       className={cn(
@@ -1588,7 +1902,7 @@ export default function InternalDashboard() {
                       )}
                     />
                   ))}
-                  <span className="text-[10px] font-bold text-gray-400 dark:text-white/40 uppercase tracking-widest ml-3">Phase {wizardStep} of 4</span>
+                  <span className="text-[10px] font-bold text-gray-400 dark:text-white/40 uppercase tracking-widest ml-3">Phase {wizardStep} of {caseType === 'structured' ? '5' : '4'}</span>
                 </div>
               </div>
               <button onClick={() => { setIsCreating(false); setWizardStep(1); }} className="p-3 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full transition-colors text-gray-400 hover:text-black dark:hover:text-white">
@@ -1619,7 +1933,6 @@ export default function InternalDashboard() {
                          <ChevronRight className="text-indigo-600 dark:text-indigo-400" />
                       </div>
                    </button>
-
                    <button 
                     type="button"
                     onClick={() => {
@@ -1638,6 +1951,27 @@ export default function InternalDashboard() {
                       </div>
                       <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
                          <ChevronRight className="text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                   </button>
+
+                   <button 
+                    type="button"
+                    onClick={() => {
+                      setCaseType('structured');
+                      setNewCase(prev => ({ ...prev, status: 'published' }));
+                      setWizardStep(1);
+                    }}
+                    className="group relative p-10 rounded-[40px] border-2 border-dashed border-gray-200 dark:border-white/10 hover:border-amber-600 dark:hover:border-amber-500 hover:bg-amber-50/50 dark:hover:bg-amber-500/5 transition-all text-left flex flex-col items-center justify-center gap-6"
+                   >
+                      <div className="p-6 bg-amber-100 dark:bg-amber-500/20 rounded-3xl text-amber-600 dark:text-amber-400 group-hover:scale-110 group-hover:bg-amber-600 group-hover:text-white transition-all duration-500">
+                        <FileText size={48} strokeWidth={1.5} />
+                      </div>
+                      <div className="text-center">
+                        <h3 className="text-xl font-black uppercase italic tracking-tighter text-gray-900 dark:text-white">Structured CRF</h3>
+                        <p className="text-sm text-gray-400 dark:text-white/40 mt-2 font-medium max-w-[200px]">Detailed clinical case with peer review & structured data.</p>
+                      </div>
+                      <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <ChevronRight className="text-amber-600 dark:text-amber-400" />
                       </div>
                    </button>
                 </div>
@@ -1688,10 +2022,10 @@ export default function InternalDashboard() {
                                        setSpecSearch(s.name);
                                        setShowSpecResults(false);
                                      }}
-                                     className="w-full text-left p-3 hover:bg-indigo-50 rounded-xl transition-colors flex items-center justify-between"
+                                     className="w-full text-left p-3 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-colors flex items-center justify-between text-gray-900 dark:text-gray-100"
                                    >
                                       <span className="text-sm font-bold">{s.name}</span>
-                                      <span className="text-[10px] font-mono text-gray-400">{s.code}</span>
+                                      <span className="text-[10px] font-mono text-gray-400 dark:text-white/40">{s.code}</span>
                                    </button>
                                  ))
                                }
@@ -1713,20 +2047,20 @@ export default function InternalDashboard() {
                   {caseType === 'live' ? (
                     <div className="space-y-6">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Session Scheduling</label>
-                        <input type="datetime-local" value={newCase.scheduledAt} onChange={(e) => setNewCase({...newCase, scheduledAt: e.target.value})} className="w-full bg-emerald-50/50 border-emerald-100 border rounded-2xl p-4 font-bold focus:ring-4 focus:ring-emerald-500/10 outline-none text-emerald-900" />
+                        <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Session Scheduling</label>
+                        <input type="datetime-local" value={newCase.scheduledAt} onChange={(e) => setNewCase({...newCase, scheduledAt: e.target.value})} className="w-full bg-emerald-50/50 dark:bg-emerald-500/5 border-emerald-100 dark:border-emerald-500/10 border rounded-2xl p-4 font-bold focus:ring-4 focus:ring-emerald-500/10 outline-none text-emerald-900 dark:text-emerald-100" />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Audience Join Link (Public)</label>
-                        <input type="url" value={newCase.googleMeetLink} onChange={(e) => setNewCase({...newCase, googleMeetLink: e.target.value})} placeholder="https://meet.google.com/..." className="w-full bg-emerald-50/50 border-emerald-100 border rounded-2xl p-4 font-medium focus:ring-4 focus:ring-emerald-500/10 outline-none" />
+                        <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Audience Join Link (Public)</label>
+                        <input type="url" value={newCase.googleMeetLink} onChange={(e) => setNewCase({...newCase, googleMeetLink: e.target.value})} placeholder="https://meet.google.com/..." className="w-full bg-emerald-50/50 dark:bg-emerald-500/5 border-emerald-100 dark:border-emerald-500/10 border rounded-2xl p-4 font-medium focus:ring-4 focus:ring-emerald-500/10 outline-none text-gray-900 dark:text-white" />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-indigo-600 font-black">Private Speaker Link (Sent to Presenter)</label>
-                        <input type="url" value={newCase.speakerJoinLink} onChange={(e) => setNewCase({...newCase, speakerJoinLink: e.target.value})} placeholder="Host-only admission URL..." className="w-full bg-indigo-50/50 border-indigo-100 border rounded-2xl p-4 font-bold focus:ring-4 focus:ring-indigo-600/10 outline-none" />
+                        <label className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 font-black">Private Speaker Link (Sent to Presenter)</label>
+                        <input type="url" value={newCase.speakerJoinLink} onChange={(e) => setNewCase({...newCase, speakerJoinLink: e.target.value})} placeholder="Host-only admission URL..." className="w-full bg-indigo-50/50 dark:bg-indigo-500/5 border-indigo-100 dark:border-indigo-500/10 border rounded-2xl p-4 font-bold focus:ring-4 focus:ring-indigo-600/10 outline-none text-gray-900 dark:text-white" />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Intended Duration</label>
-                        <input type="text" value={newCase.duration || ''} onChange={(e) => setNewCase({...newCase, duration: e.target.value})} placeholder="e.g. 60 mins" className="w-full bg-gray-50 border-gray-100 border rounded-2xl p-4 font-bold outline-none font-mono" />
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Intended Duration</label>
+                        <input type="text" value={newCase.duration || ''} onChange={(e) => setNewCase({...newCase, duration: e.target.value})} placeholder="e.g. 60 mins" className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 font-bold outline-none font-mono text-gray-900 dark:text-white" />
                       </div>
                     </div>
                   ) : (
@@ -1754,13 +2088,13 @@ export default function InternalDashboard() {
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
                   <div className="flex items-start gap-8">
                      <div className="relative group">
-                        <div className="w-32 h-32 rounded-[32px] bg-gray-50 border-2 border-dashed border-gray-200 overflow-hidden flex items-center justify-center transition-all group-hover:border-indigo-500">
+                        <div className="w-32 h-32 rounded-[32px] bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-200 dark:border-white/10 overflow-hidden flex items-center justify-center transition-all group-hover:border-indigo-500">
                            {newCase.presenterPhotoURL ? (
                              <img src={newCase.presenterPhotoURL} className="w-full h-full object-cover" alt="" />
                            ) : (
                              <div className="text-center p-2">
-                               <Users size={24} className="mx-auto text-gray-200 mb-1" />
-                               <span className="text-[8px] font-black uppercase text-gray-300">Photo</span>
+                               <Users size={24} className="mx-auto text-gray-200 dark:text-white/20 mb-1" />
+                               <span className="text-[8px] font-black uppercase text-gray-300 dark:text-white/20">Photo</span>
                              </div>
                            )}
                         </div>
@@ -1800,45 +2134,96 @@ export default function InternalDashboard() {
                               setShowSpeakerResults(true);
                             }}
                             placeholder="Search existing experts pool..." 
-                            className="w-full bg-indigo-50/30 border-indigo-100 border rounded-2xl p-5 font-bold focus:ring-4 focus:ring-indigo-600/10 outline-none pl-14" 
+                            className="w-full bg-indigo-50/30 dark:bg-indigo-500/5 border-indigo-100 dark:border-indigo-500/10 border rounded-2xl p-5 font-bold focus:ring-4 focus:ring-indigo-600/10 outline-none pl-14 text-gray-900 dark:text-white" 
                           />
-                          <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-indigo-300" size={20} />
+                          <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-indigo-300 dark:text-indigo-500/50" size={20} />
+                          {showSpeakerResults && speakerSearch && (
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1A1A1A] border border-gray-100 dark:border-white/10 rounded-3xl shadow-2xl z-50 max-h-60 overflow-y-auto overflow-x-hidden p-2">
+                              {speakers.filter(s => s.displayName?.toLowerCase().includes(speakerSearch.toLowerCase())).map(s => (
+                                <button key={s.uid} type="button" onClick={() => handleSpeakerSelect(s)} className="w-full text-left p-4 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center gap-4 transition-all rounded-2xl group border-b border-gray-50 dark:border-white/5 last:border-0">
+                                  <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 ring-2 ring-transparent group-hover:ring-indigo-500 transition-all">
+                                    <img src={s.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.uid}`} alt="" />
+                                  </div>
+                                  <div>
+                                     <p className="font-bold text-gray-900 dark:text-white">{s.displayName}</p>
+                                     <p className="text-[10px] text-gray-400 dark:text-white/40 font-medium uppercase tracking-tight">{s.qualifications} • {s.specialties?.slice(0, 2).join(', ')}</p>
+                                  </div>
+                                  <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <CheckCircle2 size={20} className="text-indigo-500" />
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                      </div>
                   </div>
-                    {showSpeakerResults && speakerSearch && (
-                      <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-3xl shadow-2xl z-50 max-h-60 overflow-y-auto overflow-x-hidden p-2">
-                        {speakers.filter(s => s.displayName?.toLowerCase().includes(speakerSearch.toLowerCase())).map(s => (
-                          <button key={s.uid} type="button" onClick={() => handleSpeakerSelect(s)} className="w-full text-left p-4 hover:bg-gray-50 flex items-center gap-4 transition-all rounded-2xl group border-b border-gray-50 last:border-0">
-                            <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 ring-2 ring-transparent group-hover:ring-indigo-500 transition-all">
-                              <img src={s.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.uid}`} alt="" />
-                            </div>
-                            <div>
-                               <p className="font-bold text-gray-900">{s.displayName}</p>
-                               <p className="text-[10px] text-gray-400 font-medium uppercase tracking-tight">{s.qualifications} • {s.specialties?.slice(0, 2).join(', ')}</p>
-                            </div>
-                            <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
-                              <CheckCircle2 size={20} className="text-indigo-500" />
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+
+                  {caseType === 'structured' && (
+                    <div className="flex items-start gap-8 mt-10">
+                       <div className="relative group">
+                          <div className="w-32 h-32 rounded-[32px] bg-amber-50 dark:bg-white/5 border-2 border-dashed border-amber-200 dark:border-white/10 overflow-hidden flex items-center justify-center transition-all group-hover:border-amber-500">
+                             {newCase.reviewerPhotoURL ? (
+                               <img src={newCase.reviewerPhotoURL} className="w-full h-full object-cover" alt="" />
+                             ) : (
+                               <div className="text-center p-2">
+                                 <ShieldCheck size={24} className="mx-auto text-amber-200 dark:text-white/20 mb-1" />
+                                 <span className="text-[8px] font-black uppercase text-amber-300 dark:text-white/20">Reviewer</span>
+                               </div>
+                             )}
+                          </div>
+                       </div>
+                       <div className="flex-1 space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-2 block">Assign Peer Reviewer</label>
+                          <div className="relative">
+                            <input 
+                              type="text" 
+                              value={reviewerSearch}
+                              onChange={(e) => {
+                                setReviewerSearch(e.target.value);
+                                setShowReviewerResults(true);
+                              }}
+                              placeholder="Find available peer reviewer..." 
+                              className="w-full bg-amber-50/30 dark:bg-amber-500/5 border-amber-100 dark:border-white/10 border rounded-2xl p-5 font-bold focus:ring-4 focus:ring-amber-600/10 outline-none pl-14 text-gray-900 dark:text-white" 
+                            />
+                            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-amber-300 dark:text-amber-500/50" size={20} />
+                            {showReviewerResults && reviewerSearch && (
+                              <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#1A1A1A] border border-gray-100 dark:border-white/10 rounded-3xl shadow-2xl z-50 max-h-60 overflow-y-auto overflow-x-hidden p-2">
+                                {speakers.filter(s => s.displayName?.toLowerCase().includes(reviewerSearch.toLowerCase())).map(s => (
+                                  <button key={s.uid} type="button" onClick={() => handleReviewerSelect(s)} className="w-full text-left p-4 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center gap-4 transition-all rounded-2xl group border-b border-gray-50 dark:border-white/5 last:border-0">
+                                    <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 ring-2 ring-transparent group-hover:ring-amber-500 transition-all">
+                                      <img src={s.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.uid}`} alt="" />
+                                    </div>
+                                    <div>
+                                       <p className="font-bold text-gray-900 dark:text-white">{s.displayName}</p>
+                                       <p className="text-[10px] text-gray-400 dark:text-white/40 font-medium uppercase tracking-tight">{s.qualifications} • Peer Reviewer</p>
+                                    </div>
+                                    <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <CheckCircle2 size={20} className="text-amber-500" />
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                       </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-6">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Expert Name</label>
-                        <input type="text" value={newCase.presenterName} onChange={(e) => setNewCase({...newCase, presenterName: e.target.value})} className="w-full bg-gray-50 border-gray-100 border rounded-2xl p-4 font-bold outline-none" />
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Expert Name</label>
+                        <input type="text" value={newCase.presenterName} onChange={(e) => setNewCase({...newCase, presenterName: e.target.value})} className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 font-bold outline-none text-gray-900 dark:text-white" />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Expert Photo</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Expert Photo</label>
                         <div className="flex items-center gap-4">
-                           <div className="w-16 h-16 rounded-2xl bg-gray-50 border border-gray-100 overflow-hidden flex items-center justify-center">
-                              {newCase.presenterPhotoURL ? <img src={newCase.presenterPhotoURL} className="w-full h-full object-cover" /> : <User size={24} className="text-gray-200" />}
+                           <div className="w-16 h-16 rounded-2xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 overflow-hidden flex items-center justify-center">
+                              {newCase.presenterPhotoURL ? <img src={newCase.presenterPhotoURL} className="w-full h-full object-cover" /> : <Users size={24} className="text-gray-200 dark:text-white/20" />}
                            </div>
                            <label className="flex-1">
-                              <div className="bg-white border border-gray-100 rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest text-center cursor-pointer hover:bg-gray-50 transition-colors">
+                              <div className="bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest text-center cursor-pointer hover:bg-gray-50 dark:hover:bg-white/10 transition-colors text-gray-900 dark:text-white font-bold">
                                  Upload Photo
                               </div>
                               <input 
@@ -1863,76 +2248,148 @@ export default function InternalDashboard() {
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Origin Country</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500 dark:text-indigo-400">Origin Country</label>
                         <div className="flex gap-4">
                            <select 
                              value={newCase.presenterCountry} 
                              onChange={(e) => setNewCase({...newCase, presenterCountry: e.target.value})}
-                             className="flex-1 bg-gray-50 border-gray-100 border rounded-2xl p-4 font-bold outline-none"
+                             className="flex-1 bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 font-bold outline-none text-gray-900 dark:text-white"
                            >
-                             {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+                             {COUNTRIES.map(c => <option key={c.code} value={c.code} className="dark:bg-[#111111]">{c.name}</option>)}
                            </select>
-                           <div className="w-14 h-14 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-center">
+                           <div className="w-14 h-14 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl flex items-center justify-center">
                               <img src={`https://flagsapi.com/${newCase.presenterCountry}/flat/64.png`} className="w-8 h-8 object-contain" />
                            </div>
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Email Address</label>
-                          <input type="email" value={newCase.presenterEmail || ''} onChange={(e) => setNewCase({...newCase, presenterEmail: e.target.value})} className="w-full bg-gray-50 border-gray-100 border rounded-2xl p-4 font-bold outline-none" />
+                          <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Email Address</label>
+                          <input type="email" value={newCase.presenterEmail || ''} onChange={(e) => setNewCase({...newCase, presenterEmail: e.target.value})} className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 font-bold outline-none text-gray-900 dark:text-white" />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Phone Member</label>
-                          <input type="tel" value={newCase.presenterPhone || ''} onChange={(e) => setNewCase({...newCase, presenterPhone: e.target.value})} className="w-full bg-gray-50 border-gray-100 border rounded-2xl p-4 font-bold outline-none" />
+                          <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Phone Member</label>
+                          <input type="tel" value={newCase.presenterPhone || ''} onChange={(e) => setNewCase({...newCase, presenterPhone: e.target.value})} className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 font-bold outline-none text-gray-900 dark:text-white" />
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Credentials & Qualifications</label>
-                        <input type="text" value={newCase.presenterQualifications} onChange={(e) => setNewCase({...newCase, presenterQualifications: e.target.value})} className="w-full bg-gray-50 border-gray-100 border rounded-2xl p-4 font-bold outline-none" />
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Credentials & Qualifications</label>
+                        <input type="text" value={newCase.presenterQualifications} onChange={(e) => setNewCase({...newCase, presenterQualifications: e.target.value})} className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 font-bold outline-none text-gray-900 dark:text-white" />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Relevant Publications</label>
-                        <textarea value={newCase.presenterPublications} onChange={(e) => setNewCase({...newCase, presenterPublications: e.target.value})} placeholder="Peer reviewed papers..." className="w-full bg-gray-50 border-gray-100 border rounded-2xl p-4 font-medium outline-none h-24 resize-none" />
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Relevant Publications</label>
+                        <textarea value={newCase.presenterPublications} onChange={(e) => setNewCase({...newCase, presenterPublications: e.target.value})} placeholder="Peer reviewed papers..." className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 font-medium outline-none h-24 resize-none text-gray-900 dark:text-white" />
                       </div>
                     </div>
                     <div className="space-y-6">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Professional Narrative (Bio)</label>
-                        <textarea value={newCase.presenterBio} onChange={(e) => setNewCase({...newCase, presenterBio: e.target.value})} className="w-full bg-gray-50 border-gray-100 border rounded-2xl p-4 font-medium outline-none h-32 resize-none" />
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Professional Narrative (Bio)</label>
+                        <textarea value={newCase.presenterBio} onChange={(e) => setNewCase({...newCase, presenterBio: e.target.value})} className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 font-medium outline-none h-32 resize-none text-gray-900 dark:text-white" />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-rose-500">Industry Disclosures</label>
-                        <textarea value={newCase.presenterDisclosures} onChange={(e) => setNewCase({...newCase, presenterDisclosures: e.target.value})} placeholder="Potential conflicts of interest..." className="w-full bg-rose-50/30 border-rose-100 border rounded-2xl p-4 font-medium outline-none h-24 resize-none" />
+                        <label className="text-[10px] font-black uppercase tracking-widest text-rose-500 dark:text-rose-400">Industry Disclosures</label>
+                        <textarea value={newCase.presenterDisclosures} onChange={(e) => setNewCase({...newCase, presenterDisclosures: e.target.value})} placeholder="Potential conflicts of interest..." className="w-full bg-rose-50/30 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20 border rounded-2xl p-4 font-medium outline-none h-24 resize-none text-gray-900 dark:text-white" />
                       </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {wizardStep === 3 && (
+              {wizardStep === 3 && caseType === 'structured' && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-10">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-6">
+                         <h3 className="text-lg font-black uppercase italic tracking-tighter text-indigo-900 dark:text-white mb-2">Clinical Presentation (CRF Part 1)</h3>
+                         <div className="space-y-4">
+                            <div className="space-y-2">
+                               <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Chief Complaint & History</label>
+                               <textarea 
+                                 value={newCase.clinicalData.history} 
+                                 onChange={(e) => setNewCase({...newCase, clinicalData: {...newCase.clinicalData, history: e.target.value}})} 
+                                 className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 h-32 resize-none text-sm leading-relaxed text-gray-900 dark:text-white" 
+                                 placeholder="Patient chief complaint, history of present illness..."
+                               />
+                            </div>
+                            <div className="space-y-2">
+                               <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Physical Examination</label>
+                               <textarea 
+                                 value={newCase.clinicalData.examination} 
+                                 onChange={(e) => setNewCase({...newCase, clinicalData: {...newCase.clinicalData, examination: e.target.value}})} 
+                                 className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 h-32 resize-none text-sm leading-relaxed text-gray-900 dark:text-white" 
+                                 placeholder="Key clinical findings, vitals, systemic exam..."
+                               />
+                            </div>
+                            <div className="space-y-2">
+                               <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Initial Presentation</label>
+                               <textarea 
+                                 value={newCase.clinicalData.presentation} 
+                                 onChange={(e) => setNewCase({...newCase, clinicalData: {...newCase.clinicalData, presentation: e.target.value}})} 
+                                 className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 h-32 resize-none text-sm leading-relaxed text-gray-900 dark:text-white" 
+                                 placeholder="Detailed presenting symptoms..."
+                               />
+                            </div>
+                         </div>
+                      </div>
+
+                      <div className="space-y-6">
+                         <h3 className="text-lg font-black uppercase italic tracking-tighter text-indigo-900 dark:text-white mb-2">Management & Differential</h3>
+                         <div className="space-y-4">
+                            <div className="space-y-2">
+                               <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Differential Diagnosis</label>
+                               <textarea 
+                                 value={newCase.clinicalData.differentialDiagnosis.join('\n')} 
+                                 onChange={(e) => setNewCase({...newCase, clinicalData: {...newCase.clinicalData, differentialDiagnosis: e.target.value.split('\n')}})} 
+                                 className="w-full bg-emerald-50/30 dark:bg-emerald-500/5 border-emerald-100 dark:border-white/10 border rounded-2xl p-4 h-32 resize-none text-sm leading-relaxed text-gray-900 dark:text-white" 
+                                 placeholder="List possible diagnoses (one per line)..."
+                               />
+                            </div>
+                            <div className="space-y-2">
+                               <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Management & Protocol</label>
+                               <textarea 
+                                 value={newCase.clinicalData.management} 
+                                 onChange={(e) => setNewCase({...newCase, clinicalData: {...newCase.clinicalData, management: e.target.value}})} 
+                                 className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 h-32 resize-none text-sm leading-relaxed text-gray-900 dark:text-white" 
+                                 placeholder="Clinical management steps, surgery details, medications..."
+                               />
+                            </div>
+                            <div className="space-y-2">
+                               <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Outcome & Observations</label>
+                               <textarea 
+                                 value={newCase.clinicalData.outcome} 
+                                 onChange={(e) => setNewCase({...newCase, clinicalData: {...newCase.clinicalData, outcome: e.target.value}})} 
+                                 className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 h-32 resize-none text-sm leading-relaxed text-gray-900 dark:text-white" 
+                                 placeholder="Final outcome, patient status, key expert observations..."
+                               />
+                            </div>
+                         </div>
+                      </div>
+                   </div>
+                </div>
+              )}
+
+              {wizardStep === 3 && caseType !== 'structured' && (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-10">
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                      <div className="p-8 rounded-[40px] bg-indigo-50/50 border border-indigo-100 space-y-6">
-                        <div className="flex items-center gap-3 text-indigo-600 mb-2">
-                          <div className="p-2 bg-white rounded-xl shadow-sm"><ShieldCheck size={20} /></div>
+                      <div className="p-8 rounded-[40px] bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20 space-y-6">
+                        <div className="flex items-center gap-3 text-indigo-600 dark:text-indigo-400 mb-2">
+                          <div className="p-2 bg-white dark:bg-white/10 rounded-xl shadow-sm"><ShieldCheck size={20} /></div>
                           <h3 className="font-black uppercase text-xs tracking-widest">Accreditation Gateway</h3>
                         </div>
                         <div className="space-y-2">
-                           <label className="text-[10px] font-black uppercase tracking-widest text-indigo-400">CPD/CME Points Value</label>
-                           <input type="number" step="0.1" value={newCase.accreditationPoints} onChange={(e) => setNewCase({...newCase, accreditationPoints: parseFloat(e.target.value)})} className="w-full bg-white border-indigo-100 border rounded-2xl p-5 font-black text-3xl text-indigo-600 focus:ring-4 focus:ring-indigo-500/10 outline-none" />
+                           <label className="text-[10px] font-black uppercase tracking-widest text-indigo-400 dark:text-indigo-300">CPD/CME Points Value</label>
+                           <input type="number" step="0.1" value={newCase.accreditationPoints} onChange={(e) => setNewCase({...newCase, accreditationPoints: parseFloat(e.target.value)})} className="w-full bg-white dark:bg-white/5 border-indigo-100 dark:border-white/10 border rounded-2xl p-5 font-black text-3xl text-indigo-600 dark:text-indigo-400 focus:ring-4 focus:ring-indigo-500/10 outline-none" />
                         </div>
-                        <p className="text-[10px] text-indigo-400 font-bold leading-relaxed italic opacity-80">
+                        <p className="text-[10px] text-indigo-400 dark:text-white/40 font-bold leading-relaxed italic opacity-80">
                           Assign rewards to incentivise higher engagement from the global audience pool. 
                         </p>
                       </div>
 
-                      <div className="p-8 rounded-[40px] bg-amber-50/50 border border-amber-100/50 space-y-6">
-                        <div className="flex items-center gap-3 text-amber-600 mb-2">
-                          <div className="p-2 bg-white rounded-xl shadow-sm"><Users size={20} /></div>
+                      <div className="p-8 rounded-[40px] bg-amber-50/50 dark:bg-amber-500/5 border border-amber-100/50 dark:border-amber-500/20 space-y-6">
+                        <div className="flex items-center gap-3 text-amber-600 dark:text-amber-400 mb-2">
+                          <div className="p-2 bg-white dark:bg-white/10 rounded-xl shadow-sm"><Users size={20} /></div>
                           <h3 className="font-black uppercase text-xs tracking-widest">Education Sponsorship</h3>
                         </div>
-                        <div className="flex items-center gap-3 p-4 bg-white rounded-2xl border border-amber-100">
+                        <div className="flex items-center gap-3 p-4 bg-white dark:bg-white/10 rounded-2xl border border-amber-100 dark:border-white/5">
                           <input 
                             type="checkbox" 
                             id="isSponsoredWizard"
@@ -1940,24 +2397,24 @@ export default function InternalDashboard() {
                             onChange={(e) => setNewCase({...newCase, isSponsored: e.target.checked})}
                             className="w-5 h-5 rounded-lg border-amber-200 text-amber-600 focus:ring-amber-500 ring-offset-2" 
                           />
-                          <label htmlFor="isSponsoredWizard" className="text-sm font-bold text-amber-900">Education Grant Provided</label>
+                          <label htmlFor="isSponsoredWizard" className="text-sm font-bold text-amber-900 dark:text-amber-100">Education Grant Provided</label>
                         </div>
                         {newCase.isSponsored && (
                           <div className="space-y-4 animate-in fade-in duration-300">
                              <div className="space-y-1">
-                               <label className="text-[10px] font-black uppercase tracking-widest text-amber-500">Corporate Identity</label>
+                               <label className="text-[10px] font-black uppercase tracking-widest text-amber-500 dark:text-white/40">Corporate Identity</label>
                                <select 
                                   value={newCase.sponsorId} 
                                   onChange={(e) => setNewCase({...newCase, sponsorId: e.target.value})}
-                                  className="w-full bg-white border-amber-100 border rounded-xl p-3 font-bold text-amber-900 outline-none"
+                                  className="w-full bg-white dark:bg-white/5 border border-amber-100 dark:border-white/10 rounded-xl p-3 font-bold text-amber-900 dark:text-amber-100 outline-none"
                                >
-                                  <option value="">Select Partner...</option>
-                                  {sponsors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                  <option value="" className="dark:bg-[#111111]">Select Partner...</option>
+                                  {sponsors.map(s => <option key={s.id} value={s.id} className="dark:bg-[#111111]">{s.name}</option>)}
                                </select>
                              </div>
                              <div className="space-y-1">
-                               <label className="text-[10px] font-black uppercase tracking-widest text-amber-500">Sponsorship Expiry</label>
-                               <input type="date" value={newCase.expiryDate} onChange={(e) => setNewCase({...newCase, expiryDate: e.target.value})} className="w-full bg-white border-amber-100 rounded-xl p-3 font-bold text-amber-900 outline-none" />
+                               <label className="text-[10px] font-black uppercase tracking-widest text-amber-500 dark:text-white/40">Sponsorship Expiry</label>
+                               <input type="date" value={newCase.expiryDate} onChange={(e) => setNewCase({...newCase, expiryDate: e.target.value})} className="w-full bg-white dark:bg-white/5 border-amber-100 dark:border-white/10 rounded-xl p-3 font-bold text-amber-900 dark:text-amber-100 outline-none" />
                              </div>
                           </div>
                         )}
@@ -1965,15 +2422,89 @@ export default function InternalDashboard() {
                    </div>
                 </div>
               )}
+               {wizardStep === 4 && caseType === 'structured' && (
+                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-10">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                       <div className="space-y-6">
+                          <h3 className="text-lg font-black uppercase italic tracking-tighter text-indigo-900 dark:text-white mb-2">Clinical Evidence & Reference Material</h3>
+                          <div className="space-y-4">
+                             <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Clinical Case Thumbnail (Representative Visual)</label>
+                                <div className="flex flex-col gap-4">
+                                   <div className="w-full aspect-video rounded-3xl bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-200 dark:border-white/10 flex items-center justify-center overflow-hidden group relative">
+                                      {newCase.thumbnailUrl ? (
+                                        <img src={newCase.thumbnailUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt="" />
+                                      ) : (
+                                        <div className="text-center">
+                                           <Image size={32} className="mx-auto text-gray-200 dark:text-white/20 mb-2" />
+                                           <p className="text-xs font-bold text-gray-300 dark:text-white/30">Select Case Visual</p>
+                                        </div>
+                                      )}
+                                   </div>
+                                   <div className="flex gap-4">
+                                      <button 
+                                        type="button" 
+                                        disabled={isGeneratingImage || !newCase.title || !newCase.description}
+                                        onClick={handleGenerateThumbnail}
+                                        className="flex-1 bg-black text-white p-4 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-800 transition-all disabled:opacity-30 flex items-center justify-center gap-2 shadow-xl"
+                                      >
+                                        {isGeneratingImage ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                                        Generate AI
+                                      </button>
+                                      <button 
+                                        type="button" 
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="flex-1 bg-white text-gray-900 border border-gray-100 p-4 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
+                                      >
+                                        <Image size={14} className="text-gray-400" />
+                                        Upload
+                                      </button>
+                                   </div>
+                                </div>
+                             </div>
+                             <div className="space-y-2">
+                               <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Supporting Reference Link (Evidence/DICOM/Video)</label>
+                               <input type="url" value={newCase.videoUrl} onChange={(e) => setNewCase({...newCase, videoUrl: e.target.value})} placeholder="URL for investigative scans, audio logs, or video evidence..." className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-4 font-bold outline-none text-gray-900 dark:text-white" />
+                             </div>
+                          </div>
+                       </div>
 
-              {wizardStep === 4 && (
+                       <div className="space-y-6">
+                          <h3 className="text-lg font-black uppercase italic tracking-tighter text-indigo-900 dark:text-white mb-2">Case Narrative & Learning</h3>
+                          <div className="space-y-4">
+                             <div className="space-y-2">
+                               <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Clinical Discussion & Key Learning Points</label>
+                               <textarea 
+                                 required 
+                                 value={newCase.description} 
+                                 onChange={(e) => setNewCase({...newCase, description: e.target.value})} 
+                                 placeholder="In-depth clinical narrative. Discuss the complexities of this specific case and key takeaways for the medical community..."
+                                 className="w-full bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-white/10 border rounded-2xl p-5 font-medium outline-none h-48 resize-none leading-relaxed text-gray-900 dark:text-white" 
+                               />
+                             </div>
+                             <div className="p-5 rounded-2xl bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/10">
+                               <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 mb-1">
+                                  <ShieldCheck size={16} />
+                                  <span className="text-[10px] font-black uppercase tracking-widest">Integrity Check</span>
+                                </div>
+                               <p className="text-[10px] text-indigo-400 dark:text-white/40 font-bold leading-relaxed italic opacity-80">
+                                 Structured Clinical Reports are indexed for global clinical research. Ensure all management protocols cited are supported by peer-reviewed evidence.
+                               </p>
+                             </div>
+                          </div>
+                       </div>
+                    </div>
+                 </div>
+              )}
+
+              {wizardStep === 4 && caseType !== 'structured' && (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-10">
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                       <div className="space-y-6">
                         <div className="space-y-2">
-                           <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Case Thumbnail</label>
+                           <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-white/40">Case Thumbnail</label>
                            <div className="flex flex-col gap-4">
-                              <div className="w-full aspect-video rounded-3xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden group relative">
+                              <div className="w-full aspect-video rounded-3xl bg-gray-50 dark:bg-white/5 border-2 border-dashed border-gray-200 dark:border-white/10 flex items-center justify-center overflow-hidden group relative">
                                  {newCase.thumbnailUrl ? (
                                    <>
                                      <img src={newCase.thumbnailUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt="" />
@@ -1983,8 +2514,8 @@ export default function InternalDashboard() {
                                    </>
                                  ) : (
                                    <div className="text-center">
-                                      <Image size={32} className="mx-auto text-gray-200 mb-2" />
-                                      <p className="text-xs font-bold text-gray-300">Thumbnail Preview</p>
+                                      <Image size={32} className="mx-auto text-gray-200 dark:text-white/20 mb-2" />
+                                      <p className="text-xs font-bold text-gray-300 dark:text-white/30">Thumbnail Preview</p>
                                    </div>
                                  )}
                               </div>
@@ -2040,22 +2571,95 @@ export default function InternalDashboard() {
                    </div>
                 </div>
               )}
+              {(wizardStep === 5 && caseType === 'structured') && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-10">
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                      <div className="p-8 rounded-[40px] bg-emerald-50/50 dark:bg-emerald-500/5 border border-emerald-100/50 dark:border-emerald-500/20 space-y-6">
+                        <div className="flex items-center gap-3 text-emerald-600 dark:text-emerald-400 mb-2">
+                          <div className="p-2 bg-white dark:bg-white/10 rounded-xl shadow-sm"><CheckCircle2 size={20} /></div>
+                          <h3 className="font-black uppercase text-xs tracking-widest">Ready for Peer Review</h3>
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-white/60 leading-relaxed font-bold">
+                          The case presentation for <span className="text-black dark:text-white italic">"{newCase.title}"</span> is complete and adheres to the structured CRF format. 
+                        </p>
+                        <div className="p-4 rounded-2xl bg-white dark:bg-white/10 border border-emerald-100 dark:border-white/5 space-y-4">
+                           <div className="flex items-center gap-4">
+                              <img src={newCase.reviewerPhotoURL} className="w-12 h-12 rounded-full border-2 border-emerald-500" alt="" />
+                              <div>
+                                 <p className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-tighter">Assigned Reviewer</p>
+                                 <p className="text-sm font-bold text-emerald-600">{newCase.reviewerName}</p>
+                              </div>
+                           </div>
+                           <p className="text-[10px] text-gray-400 font-medium">
+                              Reviewer will receive a secured link to verify the clinical data against institutional standards.
+                           </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6">
+                         <div className="p-8 rounded-[40px] bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/20">
+                            <h3 className="text-lg font-black uppercase italic tracking-tighter text-indigo-900 dark:text-white mb-4">Submission Summary</h3>
+                            <div className="space-y-3">
+                               <div className="flex justify-between items-center text-xs border-b border-indigo-100 dark:border-white/5 pb-2">
+                                  <span className="text-gray-400 font-black uppercase">Format</span>
+                                  <span className="font-bold text-indigo-600">STRUCTURED CRF</span>
+                               </div>
+                               <div className="flex justify-between items-center text-xs border-b border-indigo-100 dark:border-white/5 pb-2">
+                                  <span className="text-gray-400 font-black uppercase">Specialty</span>
+                                  <span className="font-bold text-gray-900 dark:text-white">{newCase.specialty}</span>
+                               </div>
+                               <div className="flex justify-between items-center text-xs border-b border-indigo-100 dark:border-white/5 pb-2">
+                                  <span className="text-gray-400 font-black uppercase">Accreditation</span>
+                                  <span className="font-bold text-emerald-600">+{newCase.accreditationPoints} CME</span>
+                               </div>
+                            </div>
+                         </div>
+
+                         <div className={cn(
+                           "p-8 rounded-[40px] border-2 transition-all",
+                           newCase.clinicalPolicyAccepted ? "bg-emerald-50/20 border-emerald-500/20" : "bg-rose-50/20 border-rose-500/10"
+                         )}>
+                            <h3 className="text-sm font-black uppercase tracking-widest text-rose-500 mb-4 flex items-center gap-2">
+                               <ShieldAlert size={18} />
+                               Clinical Data Policy Sign-off
+                            </h3>
+                            <label className="flex items-start gap-4 cursor-pointer group">
+                               <div className="relative mt-1">
+                                  <input 
+                                    type="checkbox" 
+                                    className="peer sr-only" 
+                                    checked={newCase.clinicalPolicyAccepted}
+                                    onChange={(e) => setNewCase({...newCase, clinicalPolicyAccepted: e.target.checked})}
+                                  />
+                                  <div className="w-6 h-6 border-2 border-gray-300 dark:border-white/10 rounded-lg group-hover:border-rose-500 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 transition-all flex items-center justify-center">
+                                     <Check size={14} className="text-white scale-0 peer-checked:scale-100 transition-transform" />
+                                  </div>
+                               </div>
+                               <span className="text-[10px] font-bold text-gray-500 dark:text-white/40 leading-relaxed uppercase tracking-tight">
+                                 I confirm that all clinical data, images, and investigative findings have been de-identified. All Patient Identifiable Information (PII) has been redacted in compliance with institutional and global data privacy standards.
+                               </span>
+                            </label>
+                         </div>
+                      </div>
+                   </div>
+                </div>
+              )}
             </form>
 
             {/* Wizard Navigation Footer */}
-            <div className="p-8 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+            <div className="p-8 bg-gray-50 dark:bg-[#151515] border-t border-gray-100 dark:border-white/5 flex items-center justify-between">
               <button 
                 type="button"
                 onClick={() => setWizardStep(prev => Math.max(1, prev - 1))}
                 className={cn(
-                  "px-8 py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all border border-gray-200 text-gray-500 hover:bg-white flex items-center gap-2",
-                  wizardStep === 1 ? "opacity-0 pointer-events-none" : "hover:text-black"
+                  "px-8 py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all border border-gray-200 dark:border-white/10 text-gray-500 hover:bg-white dark:hover:bg-white/5 flex items-center gap-2",
+                  wizardStep === 1 ? "opacity-0 pointer-events-none" : "hover:text-black dark:hover:text-white"
                 )}
               >
                 ← Back
               </button>
               
-              {wizardStep < 4 ? (
+              {wizardStep < (caseType === 'structured' ? 5 : 4) ? (
                 <button 
                   type="button"
                   onClick={() => setWizardStep(prev => prev + 1)}
@@ -2066,10 +2670,10 @@ export default function InternalDashboard() {
               ) : (
                 <button 
                   onClick={handleCreate}
-                  disabled={isSubmitting}
-                  className="bg-black text-white px-16 py-5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-800 transition-all shadow-2xl shadow-black/20 active:scale-95 disabled:opacity-50 flex items-center gap-3"
+                  disabled={isSubmitting || (caseType === 'structured' && !newCase.clinicalPolicyAccepted)}
+                  className="bg-black dark:bg-emerald-600 text-white px-16 py-5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-800 dark:hover:bg-emerald-700 transition-all shadow-2xl shadow-black/20 active:scale-95 disabled:opacity-50 flex items-center gap-3"
                 >
-                  {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <Rocket size={20} className="text-emerald-400" />}
+                  {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <Rocket size={20} className="text-emerald-400 dark:text-white" />}
                   Submit Case
                 </button>
               )}

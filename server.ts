@@ -4,18 +4,31 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { initializeFirestore, doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Import config
+// Support both environment variables and fallback to JSON for AI Studio convenience
 const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+const rawJson = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+const firebaseConfig = {
+  apiKey: process.env.VITE_FIREBASE_API_KEY || rawJson.apiKey,
+  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || rawJson.authDomain,
+  projectId: process.env.VITE_FIREBASE_PROJECT_ID || rawJson.projectId,
+  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || rawJson.storageBucket,
+  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || rawJson.messagingSenderId,
+  appId: process.env.VITE_FIREBASE_APP_ID || rawJson.appId,
+  measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || rawJson.measurementId,
+  firestoreDatabaseId: process.env.VITE_FIREBASE_DATABASE_ID || rawJson.firestoreDatabaseId
+};
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+  ignoreUndefinedProperties: true,
+}, firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)' ? firebaseConfig.firestoreDatabaseId : undefined);
 
 async function startServer() {
   const app = express();
