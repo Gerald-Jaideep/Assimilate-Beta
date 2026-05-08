@@ -15,8 +15,8 @@ service cloud.firestore {
       return isSignedIn() && (
         email == 'jaideep@assimilate.one' || 
         email == 'jaideep@medvarsity.com' ||
-        email.matches('.*@medvarsity\\.com$') ||
-        email.matches('.*@assimilate\\.one$')
+        email.endsWith('@medvarsity.com') ||
+        email.endsWith('@assimilate.one')
       );
     }
 
@@ -26,6 +26,7 @@ service cloud.firestore {
     function existing() { return resource.data; }
     
     function isMedvarsityTeam() { return isAdmin(); }
+    function isManager() { return isAdmin(); }
 
     function hasValidInvitation() {
       let email = request.auth.token.get('email', '').lower();
@@ -46,17 +47,17 @@ service cloud.firestore {
                (data.get('role', 'audience') is string);
       }
       
-      allow get: if isValidId(userId) && isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isSignedIn() && isAdmin();
       
-      allow create: if isValidId(userId) && isSignedIn() && (request.auth.uid == userId || isAdmin()) && 
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && 
                        isValidUser(incoming()) && 
                        (isAdmin() || (
                          incoming().get('role', 'audience') == 'audience' && 
                          incoming().get('roles', ['audience']) == ['audience']
                        ));
       
-      allow update: if isValidId(userId) && isSignedIn() && (
+      allow update: if isSignedIn() && (
         isAdmin() ||
         (request.auth.uid == userId && isValidUser(incoming()) && (
           // Action: Profile Self-Update & Role Switching
@@ -85,21 +86,21 @@ service cloud.firestore {
         return caseData.presenterId == request.auth.uid || isAdmin();
       }
 
-      allow get: if isValidId(caseId) && ((resource.data.status in ['published', 'scheduled']) || 
-                   (isSignedIn() && (isPresenter(resource.data) || isAdmin())));
+      allow get: if (resource.data.status in ['published', 'scheduled']) || 
+                   (isSignedIn() && (isPresenter(resource.data) || isAdmin()));
       allow list: if (isSignedIn() && (
                        isMedvarsityTeam() ||
                        isAdmin() || 
                        resource.data.presenterId == request.auth.uid
                      )) || (resource.data.status in ['published', 'scheduled']);
       
-      allow create: if isValidId(caseId) && isSignedIn() && 
+      allow create: if isSignedIn() && 
                        isValidMedicalCase(incoming()) && 
                        (incoming().presenterId == request.auth.uid) &&
                        (isAdmin() || hasValidInvitation()) &&
                        (incoming().status == 'draft');
       
-      allow update: if isValidId(caseId) && isSignedIn() && (
+      allow update: if isSignedIn() && (
         isAdmin() ||
         (isValidMedicalCase(incoming()) && (
           // Action: Presenter Metadata Update & Workflow Submission
@@ -137,7 +138,7 @@ service cloud.firestore {
         ))
       );
       
-      allow delete: if isValidId(caseId) && (isSignedIn() || isAdmin()) && isPresenter(existing());
+      allow delete: if (isSignedIn() || isAdmin()) && isPresenter(existing());
     }
 
     // --- 3. WORKFLOW & SYSTEM ---
@@ -160,14 +161,14 @@ service cloud.firestore {
         return data.userId is string && data.caseId is string &&
                data.status in ['started', 'completed', 'verified'];
       }
-      allow read: if isValidId(progressId) && isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isValidId(progressId) && isSignedIn() && (incoming().userId == request.auth.uid || isAdmin()) && isValidProgress(incoming()) &&
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin()) && isValidProgress(incoming()) &&
                        progressId == incoming().userId + "_" + incoming().caseId;
-      allow update: if isValidId(progressId) && isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()) &&
+      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()) &&
                        isValidProgress(incoming()) &&
                        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'lastStep', 'quizScore', 'progress', 'hasEarnedCredits']) &&
                        incoming().userId == existing().userId;
-      allow delete: if isValidId(progressId) && isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /user_interactions/{interactionId} {
@@ -190,16 +191,16 @@ service cloud.firestore {
         return data.userId is string && data.caseId is string &&
                (data.points is int || data.points is float);
       }
-      allow read: if isValidId(creditId) && isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isValidId(creditId) && isSignedIn() && (incoming().userId == request.auth.uid || isAdmin()) && 
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin()) && 
                        isValidCredit(incoming()) &&
                        creditId == incoming().userId + "_" + incoming().caseId &&
                        (isAdmin() || (
                          incoming().points == get(/databases/$(database)/documents/cases/$(incoming().caseId)).data.accreditation.points &&
                          get(/databases/$(database)/documents/user_progress/$(creditId)).data.status == 'completed'
                        ));
-      allow update: if isValidId(creditId) && isAdmin();
-      allow delete: if isValidId(creditId) && isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // --- 4. CASE SERIES ---
@@ -208,13 +209,13 @@ service cloud.firestore {
         return data.title is string && data.title.size() <= 200 &&
                data.authorId is string;
       }
-      allow read: if isValidId(seriesId);
-      allow create: if isValidId(seriesId) && isVerified() && (isAdmin() || (incoming().authorId == request.auth.uid && isValidSeries(incoming())));
-      allow update: if isValidId(seriesId) && isVerified() && (isAdmin() || (existing().authorId == request.auth.uid &&
+      allow read: if true;
+      allow create: if isVerified() && (isAdmin() || (incoming().authorId == request.auth.uid && isValidSeries(incoming())));
+      allow update: if isVerified() && (isAdmin() || (existing().authorId == request.auth.uid &&
                        isValidSeries(incoming()) &&
                        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'caseIds', 'updatedAt']) &&
                        incoming().authorId == existing().authorId));
-      allow delete: if isValidId(seriesId) && isVerified() && (isAdmin() || existing().authorId == request.auth.uid);
+      allow delete: if isVerified() && (isAdmin() || existing().authorId == request.auth.uid);
     }
 
     // --- 4. SPONSORS ---
@@ -231,12 +232,12 @@ service cloud.firestore {
 
     // --- 6. HYPES ---
     match /hypes/{hypeId} {
-      allow read: if isValidId(hypeId);
-      allow create: if isValidId(hypeId) && isSignedIn() && 
+      allow read: if true;
+      allow create: if isSignedIn() && 
                       request.auth.uid == incoming().userId && 
                       hypeId == request.auth.uid + "_" + incoming().caseId &&
                       !exists(/databases/$(database)/documents/hypes/$(hypeId));
-      allow delete: if isValidId(hypeId) && isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     // --- 7. CALENDAR EVENTS ---

@@ -217,7 +217,12 @@ export default function CaseDetail() {
                     if (expiredShip) setIsSponsorshipExpired(true);
                   }
 
-                  const sQ = query(collection(db, 'cases'), where('sponsorId', '==', data.sponsorId), limit(6));
+                  const sQ = query(
+                    collection(db, 'cases'), 
+                    where('sponsorId', '==', data.sponsorId), 
+                    where('status', 'in', ['published', 'scheduled']),
+                    limit(6)
+                  );
                   const sSnap = await getDocs(sQ);
                   setSponsorCases(sSnap.docs.filter(d => d.id !== id).map(d => ({ id: d.id, ...d.data() })));
                 }
@@ -229,7 +234,12 @@ export default function CaseDetail() {
           if (data.presenterId) {
             auxPromises.push((async () => {
               try {
-                const pQ = query(collection(db, 'cases'), where('presenterId', '==', data.presenterId), limit(5));
+                const pQ = query(
+                  collection(db, 'cases'), 
+                  where('presenterId', '==', data.presenterId), 
+                  where('status', 'in', ['published', 'scheduled']),
+                  limit(5)
+                );
                 const pSnap = await getDocs(pQ);
                 setPresenterCases(pSnap.docs.filter(d => d.id !== id).map(d => ({ id: d.id, ...d.data() })).slice(0, 3));
               } catch (err) { console.error("Presenter cases fetch error", err); }
@@ -240,7 +250,12 @@ export default function CaseDetail() {
           if (data.specialty) {
             auxPromises.push((async () => {
               try {
-                const rQ = query(collection(db, 'cases'), where('specialty', '==', data.specialty), limit(5));
+                const rQ = query(
+                  collection(db, 'cases'), 
+                  where('specialty', '==', data.specialty), 
+                  where('status', 'in', ['published', 'scheduled']),
+                  limit(5)
+                );
                 const rSnap = await getDocs(rQ);
                 const related = rSnap.docs.filter(d => d.id !== id).map(d => ({ id: d.id, ...d.data() }));
                 if (related.length > 0) {

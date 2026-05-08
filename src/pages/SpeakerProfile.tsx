@@ -30,7 +30,8 @@ export default function SpeakerProfile() {
           // Note: Simple query first to avoid index requirements if possible, or handle all
           const casesQuery = query(
             collection(db, 'cases'),
-            where('presenterId', '==', userDoc.id)
+            where('presenterId', '==', userDoc.id),
+            where('status', 'in', ['published', 'scheduled'])
           );
           const casesSnap = await getDocs(casesQuery);
           let cData = casesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -57,6 +58,7 @@ export default function SpeakerProfile() {
             const countryQuery = query(
               collection(db, 'cases'),
               where('presenterCountry', '==', data.region),
+              where('status', 'in', ['published', 'scheduled']),
               where('presenterId', '!=', userDoc.id),
               limit(4)
             );
@@ -69,6 +71,7 @@ export default function SpeakerProfile() {
             const specialtyQuery = query(
               collection(db, 'cases'),
               where('specialty', '==', (cData[0] as any).specialty),
+              where('status', 'in', ['published', 'scheduled']),
               where('presenterId', '!=', userDoc.id),
               limit(4)
             );
