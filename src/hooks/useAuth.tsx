@@ -21,12 +21,12 @@ interface AuthContextType {
   signInEmail: (email: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
-  switchRole: (role: string) => void;
+  switchRole: (role: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const SUPER_ADMIN_EMAILS = ['jaideep@assimilate.one', 'jaideep@medvarsity.com'];
+export const SUPER_ADMIN_EMAILS = ['jaideep@assimilate.one', 'jaideep@medvarsity.com'];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -39,14 +39,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let currentProfile: any;
       if (userDoc.exists()) {
         currentProfile = userDoc.data();
-        // Migrating role to roles if necessary
+        let needsUpdate = false;
+        const updates: any = {};
+
+        // 1. Ensure roles array exists
         if (!currentProfile.roles) {
           currentProfile.roles = [currentProfile.role || 'audience'];
+          updates.roles = currentProfile.roles;
+          needsUpdate = true;
         }
+
+        // 2. Auto-promote super-admins to have 'internal' role
         if (email && SUPER_ADMIN_EMAILS.includes(email) && !currentProfile.roles.includes('internal')) {
           currentProfile.roles = [...currentProfile.roles, 'internal'];
-          currentProfile.role = 'internal';
-          await updateDoc(doc(db, 'users', uid), { roles: currentProfile.roles, role: 'internal' });
+          updates.roles = currentProfile.roles;
+          needsUpdate = true;
+        }
+
+        // 3. Ensure active role is valid (exists in roles array)
+        if (!currentProfile.role || !currentProfile.roles.includes(currentProfile.role)) {
+          currentProfile.role = currentProfile.roles[0];
+          updates.role = currentProfile.role;
+          needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+          await updateDoc(doc(db, 'users', uid), updates);
         }
       } else {
         const initialRole = (email && SUPER_ADMIN_EMAILS.includes(email)) ? 'internal' : 'audience';
@@ -126,9 +144,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const switchRole = (role: string) => {
-    if (user?.email && SUPER_ADMIN_EMAILS.includes(user.email)) {
-      setProfile((prev: any) => ({ ...prev, role }));
+  const switchRole = async (selectedRole: string) => {
+    if (!user || !profile) return;
+
+    const isSuperAdmin = user.email && SUPER_ADMIN_EMAILS.includes(user.email);
+    const hasRole = profile.roles?.includes(selectedRole);
+
+    if (isSuperAdmin || hasRole) {
+      try {
+        await updateDoc(doc(db, 'users', user.uid), { role: selectedRole });
+        setProfile((prev: any) => ({ ...prev, role: selectedRole }));
+      } catch (error) {
+        console.error("Error switching role:", error);
+      }
+    } else {
+      console.warn("User does not have permission to switch to role:", selectedRole);
     }
   };
 

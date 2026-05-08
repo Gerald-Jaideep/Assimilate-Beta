@@ -10,7 +10,7 @@
 
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './hooks/useAuth';
+import { AuthProvider, useAuth, SUPER_ADMIN_EMAILS } from './hooks/useAuth';
 import { ThemeProvider } from './hooks/useTheme';
 import LandingPage from './pages/CaseFeed';
 import CaseDetail from './pages/CaseDetail';
@@ -31,7 +31,7 @@ function ProtectedRoute({ children, role }: { children: React.ReactNode; role?: 
   if (loading) return <div className="flex items-center justify-center h-screen bg-[#F5F5F3] dark:bg-black dark:text-white">Loading...</div>;
   if (!user) return <Navigate to="/login" />;
   
-  const isSuperAdmin = user.email && ['jaideep@assimilate.one', 'jaideep@medvarsity.com'].includes(user.email);
+  const isSuperAdmin = user.email && SUPER_ADMIN_EMAILS.includes(user.email);
   if (role && profile?.role !== role && !isSuperAdmin) return <Navigate to="/" />;
 
   return (

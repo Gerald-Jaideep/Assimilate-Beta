@@ -93,46 +93,46 @@ export default function CaseFeed() {
   return (
     <div className="space-y-12 transition-colors duration-300">
       {/* Hero Section - Matching Screenshot Layout */}
-      <section className="relative h-[540px] rounded-[48px] overflow-hidden group shadow-2xl bg-black">
+      <section className="relative h-[400px] md:h-[540px] rounded-[32px] md:rounded-[48px] overflow-hidden group shadow-2xl bg-black mx-2 md:mx-0">
         <img 
           src={heroContent.hero.backgroundImage} 
           className="w-full h-full object-cover opacity-60 grayscale group-hover:grayscale-0 group-hover:opacity-80 transition-all duration-1000 scale-105 group-hover:scale-100"
           alt="Medical Hero"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent p-12 flex flex-col justify-end">
-          <div className="flex items-center gap-3 mb-6">
-             <span className="bg-rose-600 text-white text-[10px] font-black px-3 py-1 rounded-[4px] tracking-widest shadow-lg shadow-rose-600/20">
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent p-6 md:p-12 flex flex-col justify-end">
+          <div className="flex items-center gap-3 mb-4 md:mb-6">
+             <span className="bg-rose-600 text-white text-[8px] md:text-[10px] font-black px-2 md:px-3 py-1 rounded-[4px] tracking-widest shadow-lg shadow-rose-600/20">
                {heroContent.hero.badge}
              </span>
-             <span className="text-white/40 text-[10px] font-bold tracking-widest">
+             <span className="text-white/40 text-[8px] md:text-[10px] font-bold tracking-widest">
                {heroContent.hero.badgeDate}
              </span>
           </div>
-          <h1 className="text-4xl md:text-6xl font-black text-white tracking-tighter leading-[0.9] mb-8 max-w-4xl">
+          <h1 className="text-3xl md:text-6xl font-black text-white tracking-tighter leading-[0.9] mb-4 md:mb-8 max-w-4xl">
             {heroContent.hero.headline}
           </h1>
-          <p className="text-white/60 text-xl max-w-2xl font-medium leading-relaxed">
+          <p className="text-white/60 text-sm md:text-xl max-w-2xl font-medium leading-relaxed line-clamp-2 md:line-clamp-none">
             {heroContent.hero.subtitle}
           </p>
         </div>
       </section>
 
       {/* Global Clinical Feed Header */}
-      <div className="space-y-8">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-2 h-8 bg-rose-500 rounded-full shrink-0" />
-            <h2 className="text-3xl md:text-5xl font-black tracking-tighter text-gray-900 dark:text-white">
+      <div className="space-y-6 md:space-y-8 px-4 md:px-0">
+        <div className="flex flex-col gap-3 md:gap-4">
+          <div className="flex items-center gap-3 md:gap-4">
+            <div className="w-1.5 h-6 md:w-2 md:h-8 bg-rose-500 rounded-full shrink-0" />
+            <h2 className="text-2xl md:text-5xl font-black tracking-tighter text-gray-900 dark:text-white">
               {heroContent.feed.title}
             </h2>
           </div>
-          <p className="text-xl md:text-2xl text-gray-500 dark:text-white/40 font-medium max-w-3xl">
+          <p className="text-lg md:text-2xl text-gray-500 dark:text-white/40 font-medium max-w-3xl">
             {heroContent.feed.subtitle}
           </p>
         </div>
         
         {/* Specialty Filter - Single line side scrolling */}
-        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-2 flex-nowrap scroll-smooth">
+        <div className="flex items-center gap-2 md:gap-3 overflow-x-auto no-scrollbar pb-2 flex-nowrap scroll-smooth">
           {specialties.map((s, i) => {
             return (
               <button

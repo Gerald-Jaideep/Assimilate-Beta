@@ -8,28 +8,31 @@ service cloud.firestore {
 
     // --- GLOBAL HELPERS ---
     function isSignedIn() { return request.auth != null; }
-    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    
+    // DEFINITIVE GOD MODE: Authoritative domain and email matching
+    function isAdmin() {
+      let email = request.auth.token.get('email', '').lower();
+      return isSignedIn() && (
+        email == 'jaideep@assimilate.one' || 
+        email == 'jaideep@medvarsity.com' ||
+        email.endsWith('@medvarsity.com') ||
+        email.endsWith('@assimilate.one')
+      );
+    }
+
+    function isVerified() { return isSignedIn() && (isAdmin() || request.auth.token.email_verified == true); }
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
     
-    // Auth tokens do not contain roles. Roles are stored in the user profile.
-    function getUserData(userId) { return get(/databases/$(database)/documents/users/$(userId)).data; }
-    function isSuperAdmin() { 
-      let email = request.auth.token.email;
-      let emailLower = email.lower();
-      return isSignedIn() && (
-        emailLower == 'jaideep@assimilate.one' || 
-        emailLower == 'jaideep@medvarsity.com'
-      ); 
-    }
-    function isAdmin() { 
-      return isSuperAdmin() || (
-        isSignedIn() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'audience') == 'internal' ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'audience') == 'admin')
-      );
+    function isMedvarsityTeam() { return isAdmin(); }
+    function isManager() { return isAdmin(); }
+
+    function hasValidInvitation() {
+      let email = request.auth.token.get('email', '').lower();
+      // Using email-based ID for invitations to verify authorization without brute-forcing IDs
+      return exists(/databases/$(database)/documents/invitations/$(email)) && 
+             get(/databases/$(database)/documents/invitations/$(email)).data.status == 'pending';
     }
 
     match /system_check/connection {
@@ -40,19 +43,32 @@ service cloud.firestore {
     match /users/{userId} {
       function isValidUser(data) {
         return (data.get('email', '') is string) && 
-               (data.get('roles', []) is list);
+               (data.get('roles', []) is list) &&
+               (data.get('role', 'audience') is string);
       }
       
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isSignedIn() && isAdmin();
+      
       allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && 
                        isValidUser(incoming()) && 
-                       (incoming().get('roles', ['audience']).hasAny(['audience', 'speaker', 'sponsor', 'internal', 'admin']) || isAdmin());
-      allow update: if (isSignedIn() && ((request.auth.uid == userId && (incoming().get('roles', []) == existing().get('roles', []) || isSuperAdmin())) || isAdmin()) && 
-                       incoming().diff(existing()).affectedKeys().hasAny([
-                         'displayName', 'photoURL', 'specialties', 'stats', 'bio', 
-                         'onboardingCompleted', 'careerGoal', 'region', 'role', 'roles'
-                       ]));
+                       (isAdmin() || (
+                         incoming().get('role', 'audience') == 'audience' && 
+                         incoming().get('roles', ['audience']) == ['audience']
+                       ));
+      
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (request.auth.uid == userId && isValidUser(incoming()) && (
+          // Action: Profile Self-Update & Role Switching
+          (incoming().get('roles', []) == existing().get('roles', []) &&
+           (incoming().get('role', 'audience') in existing().get('roles', ['audience'])) &&
+           incoming().diff(existing()).affectedKeys().hasOnly([
+             'role', 'displayName', 'photoURL', 'specialties', 'bio', 
+             'onboardingCompleted', 'careerGoal', 'region'
+           ]))
+        ))
+      );
     }
 
     // --- 2. MEDICAL CASES ---
@@ -60,64 +76,131 @@ service cloud.firestore {
       function isValidMedicalCase(data) {
         return data.get('title', '') is string && data.get('title', '').size() <= 200 &&
                data.get('description', '') is string && data.get('description', '').size() <= 10000 &&
-               data.get('status', 'draft') in ['draft', 'published', 'review', 'archived', 'scheduled'];
+               data.get('status', 'draft') in ['draft', 'pending_review', 'peer_review', 'published', 'review', 'archived', 'scheduled'] &&
+               data.get('views', 0) is int && data.get('likes', 0) is int &&
+               data.get('shares', 0) is int && data.get('bookmarks', 0) is int &&
+               data.get('hypes', 0) is int;
       }
 
       function isPresenter(caseData) {
         return caseData.presenterId == request.auth.uid || isAdmin();
       }
 
-      allow get: if true; // Publicly viewable for feed/detail
+      allow get: if (resource.data.status in ['published', 'scheduled']) || 
+                   (isSignedIn() && (isPresenter(resource.data) || isAdmin()));
       allow list: if (isSignedIn() && (
-                       request.auth.token.get('email', '').lower() == 'jaideep@assimilate.one' || 
-                       request.auth.token.get('email', '').lower() == 'jaideep@medvarsity.com' ||
+                       isMedvarsityTeam() ||
                        isAdmin() || 
                        resource.data.presenterId == request.auth.uid
                      )) || (resource.data.status in ['published', 'scheduled']);
       
-      allow create: if (isSignedIn() || isAdmin()) && 
+      allow create: if isSignedIn() && 
                        isValidMedicalCase(incoming()) && 
-                       (incoming().presenterId == request.auth.uid || isAdmin()) &&
-                       (incoming().status in ['draft', 'published', 'scheduled'] || isAdmin());
+                       (incoming().presenterId == request.auth.uid) &&
+                       (isAdmin() || hasValidInvitation()) &&
+                       (incoming().status == 'draft');
       
-      allow update: if (isSignedIn() || isAdmin()) && 
-                       (isPresenter(existing()) || isSignedIn()) && // Allow others to update interaction counts
-                       isValidMedicalCase(incoming()) &&
-                       (
-                         isAdmin() ||
-                         // Action: Metadata Update
-                         (isPresenter(existing()) && incoming().diff(existing()).affectedKeys().hasAny([
-                           'title', 'subtitle', 'description', 'videoUrl', 'thumbnailUrl', 
-                           'accreditation', 'presenterName', 'presenterBio', 'presenterQualifications',
-                           'presenterPublications', 'presenterDisclaimer', 'presenterCountry', 'specialty',
-                           'scheduledAt', 'googleMeetLink', 'isSponsored', 'sponsorId', 'sponsorLogo', 
-                           'sponsorName', 'sponsorDisclaimer', 'expiryDate'
-                         ])) ||
-                         // Action: Change Status
-                         (isPresenter(existing()) && incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
-                         // Action: Interaction Counts (Anyone can trigger viewing/liking/hyping if authenticated)
-                         (isSignedIn() && incoming().diff(existing()).affectedKeys().hasAny(['views', 'likes', 'shares', 'bookmarks', 'hypes']))
-                       );
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (isValidMedicalCase(incoming()) && (
+          // Action: Presenter Metadata Update & Workflow Submission
+          (isPresenter(existing()) && (
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'subtitle', 'description', 'videoUrl', 'thumbnailUrl', 
+              'accreditation', 'presenterName', 'presenterBio', 'presenterQualifications',
+              'presenterPublications', 'presenterDisclaimer', 'presenterCountry', 'specialty',
+              'scheduledAt', 'googleMeetLink', 'isSponsored', 'sponsorId', 'sponsorLogo', 
+              'sponsorName', 'sponsorDisclaimer', 'expiryDate', 'status', 'updatedAt',
+              'views', 'likes', 'shares', 'bookmarks', 'hypes'
+            ]) &&
+            (incoming().get('updatedAt', request.time) == request.time) &&
+            (incoming().presenterId == existing().presenterId) &&
+            // Presenters can only move status under specific conditions
+            (incoming().status == existing().status || (
+              // All status transitions must follow a strict state machine
+              (existing().status == 'draft' && incoming().status in ['pending_review', 'review', 'scheduled']) ||
+              (existing().status == 'scheduled' && incoming().status == 'published' && isAdmin()) ||
+              (existing().status == 'review' && incoming().status in ['published', 'draft'] && isAdmin()) ||
+              (existing().status == 'published' && incoming().status in ['archived', 'draft'] && isAdmin()) ||
+              (existing().status == 'archived' && incoming().status == 'draft' && isAdmin())
+            ))
+          )) ||
+          // Action: Public Interaction Update (Strictly limited to counters)
+          (incoming().diff(existing()).affectedKeys().hasOnly(['views', 'likes', 'shares', 'bookmarks', 'hypes']) &&
+           incoming().title == existing().title &&
+           incoming().status == existing().status &&
+           // Counter logic: ensure only increments/decrements of 1 are possible for protected fields
+           (!incoming().diff(existing()).affectedKeys().hasAny(['hypes']) || (
+             (incoming().hypes == existing().hypes + 1 && exists(/databases/$(database)/documents/hypes/$(request.auth.uid + "_" + caseId))) ||
+             (incoming().hypes == existing().hypes - 1 && !exists(/databases/$(database)/documents/hypes/$(request.auth.uid + "_" + caseId)))
+           ))
+          )
+        ))
+      );
       
       allow delete: if (isSignedIn() || isAdmin()) && isPresenter(existing());
     }
 
+    // --- 3. WORKFLOW & SYSTEM ---
+    match /invitations/{email} {
+      allow read: if isSignedIn() && (request.auth.token.email.lower() == email.lower() || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /notifications/{notifId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAdmin();
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId && 
+                       incoming().diff(existing()).affectedKeys().hasOnly(['isRead']);
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+
     // --- 3. PROGRESS & INTERACTIONS ---
     match /user_progress/{progressId} {
+      function isValidProgress(data) {
+        return data.userId is string && data.caseId is string &&
+               data.status in ['started', 'completed', 'verified'];
+      }
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow write: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin()) && isValidProgress(incoming()) &&
+                       progressId == incoming().userId + "_" + incoming().caseId;
+      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()) &&
+                       isValidProgress(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'lastStep', 'quizScore', 'progress', 'hasEarnedCredits']) &&
+                       incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /user_interactions/{interactionId} {
+      function isValidInteraction(data) {
+        return data.userId is string && data.caseId is string &&
+               data.type in ['like', 'share', 'bookmark', 'hype', 'view'];
+      }
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin()) && isValidInteraction(incoming()) &&
+                       interactionId == incoming().userId + "_" + incoming().type + "_" + incoming().caseId;
+      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()) &&
+                       isValidInteraction(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['value', 'updatedAt']) &&
+                       incoming().userId == existing().userId;
       allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /user_credits/{creditId} {
+      function isValidCredit(data) {
+        return data.userId is string && data.caseId is string &&
+               (data.points is int || data.points is float);
+      }
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin()) && 
+                       isValidCredit(incoming()) &&
+                       creditId == incoming().userId + "_" + incoming().caseId &&
+                       (isAdmin() || (
+                         incoming().points == get(/databases/$(database)/documents/cases/$(incoming().caseId)).data.accreditation.points &&
+                         get(/databases/$(database)/documents/user_progress/$(creditId)).data.status == 'completed'
+                       ));
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // --- 4. CASE SERIES ---
@@ -127,7 +210,12 @@ service cloud.firestore {
                data.authorId is string;
       }
       allow read: if true;
-      allow create, update, delete: if isVerified() && (incoming().authorId == request.auth.uid || isAdmin());
+      allow create: if isVerified() && (isAdmin() || (incoming().authorId == request.auth.uid && isValidSeries(incoming())));
+      allow update: if isVerified() && (isAdmin() || (existing().authorId == request.auth.uid &&
+                       isValidSeries(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'caseIds', 'updatedAt']) &&
+                       incoming().authorId == existing().authorId));
+      allow delete: if isVerified() && (isAdmin() || existing().authorId == request.auth.uid);
     }
 
     // --- 4. SPONSORS ---
@@ -149,6 +237,7 @@ service cloud.firestore {
                       request.auth.uid == incoming().userId && 
                       hypeId == request.auth.uid + "_" + incoming().caseId &&
                       !exists(/databases/$(database)/documents/hypes/$(hypeId));
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     // --- 7. CALENDAR EVENTS ---

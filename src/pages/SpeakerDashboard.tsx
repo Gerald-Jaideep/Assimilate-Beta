@@ -4,23 +4,34 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { motion } from 'motion/react';
 import { Video, Calendar, ArrowRight, MessageSquare, Mic } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 export default function SpeakerDashboard() {
   const { user } = useAuth();
   const [sessions, setSessions] = useState<any[]>([]);
+  const [submissions, setSubmissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchSpeakerSessions() {
+    async function fetchData() {
       if (!user) return;
-      // In a real app, speakers are linked to events. For now, we query events where they are listed in speakers array
-      // But firestore array-contains is better.
-      const q = query(collection(db, 'events'), where('speakers', 'array-contains', user.uid));
-      const snapshot = await getDocs(q);
-      setSessions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
+      try {
+        // Fetch sessions
+        const qSessions = query(collection(db, 'events'), where('speakers', 'array-contains', user.uid));
+        const sessionSnap = await getDocs(qSessions);
+        setSessions(sessionSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+        // Fetch submissions
+        const qSubmissions = query(collection(db, 'cases'), where('presenterId', '==', user.uid));
+        const subSnap = await getDocs(qSubmissions);
+        setSubmissions(subSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (err) {
+        console.error("Error fetching speaker data:", err);
+      } finally {
+        setLoading(false);
+      }
     }
-    fetchSpeakerSessions();
+    fetchData();
   }, [user]);
 
   return (
@@ -31,9 +42,82 @@ export default function SpeakerDashboard() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-        <div className="space-y-8">
-          <div className="flex items-center justify-between border-b border-gray-200 pb-4">
-            <h2 className="text-2xl font-bold">Your Assigned Sessions</h2>
+        <div className="space-y-12">
+          {/* Submissions Section */}
+          <div className="space-y-8">
+            <div className="flex items-center justify-between border-b border-gray-200 pb-4">
+              <h2 className="text-2xl font-bold italic tracking-tighter uppercase">My Case Submissions</h2>
+              <span className="bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
+                {submissions.length} Active
+              </span>
+            </div>
+
+            {loading ? (
+              <div className="space-y-4">
+                {[1].map(i => <div key={i} className="h-32 bg-gray-50 animate-pulse rounded-[32px]" />)}
+              </div>
+            ) : submissions.length === 0 ? (
+              <div className="bg-gray-50/50 p-10 rounded-[32px] border border-dashed border-gray-200 text-center space-y-4">
+                <p className="text-gray-400 font-bold italic text-sm">No submissions in progress.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {submissions.map(sub => (
+                  <motion.div 
+                    key={sub.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white p-6 rounded-[32px] border border-[#E5E5E5] space-y-4 hover:shadow-xl hover:border-indigo-100 transition-all group"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <h3 className="font-black text-lg uppercase italic tracking-tighter group-hover:text-indigo-600 transition-colors">{sub.title}</h3>
+                        <div className="flex items-center gap-2">
+                           <span className="text-[10px] font-bold text-gray-400 uppercase">{sub.caseType}</span>
+                           <span className="text-gray-200">•</span>
+                           <span className={cn(
+                             "text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded",
+                             sub.status === 'published' ? "bg-emerald-50 text-emerald-600" :
+                             sub.status === 'pending_review' ? "bg-amber-50 text-amber-600" :
+                             "bg-gray-100 text-gray-500"
+                           )}>
+                             {sub.status.replace('_', ' ')}
+                           </span>
+                        </div>
+                      </div>
+                      
+                      {sub.status === 'pending_review' && sub.reviewQueuePosition && (
+                        <div className="text-right">
+                           <p className="text-[10px] font-black uppercase text-indigo-500 tracking-widest leading-none">Queue pos.</p>
+                           <p className="text-2xl font-black italic text-indigo-900">#{sub.reviewQueuePosition}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {sub.reviewNotes && (
+                      <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 space-y-2">
+                        <p className="text-[10px] font-black uppercase text-amber-600 tracking-widest">Reviewer Feedback</p>
+                        <p className="text-xs text-amber-900 font-medium leading-relaxed italic">"{sub.reviewNotes}"</p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-4 border-t border-gray-50">
+                       <p className="text-[10px] font-bold text-gray-400 uppercase">
+                         Last update: {sub.updatedAt ? new Date(sub.updatedAt).toLocaleDateString() : 'N/A'}
+                       </p>
+                       <button className="text-[10px] font-black uppercase text-indigo-600 hover:underline">
+                         View Details
+                       </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-8">
+            <div className="flex items-center justify-between border-b border-gray-200 pb-4">
+              <h2 className="text-2xl font-bold">Your Assigned Sessions</h2>
             <span className="bg-black text-white text-[10px] font-bold px-3 py-1 rounded-full">
               {sessions.length} Found
             </span>
@@ -79,8 +163,9 @@ export default function SpeakerDashboard() {
             </div>
           )}
         </div>
+      </div>
 
-        <div className="space-y-8">
+      <div className="space-y-8">
           <h2 className="text-2xl font-bold border-b border-gray-200 pb-4">Speaker Resources</h2>
           <div className="grid grid-cols-1 gap-4">
             {[

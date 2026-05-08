@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, query, where, deleteDoc, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth, SUPER_ADMIN_EMAILS } from '../hooks/useAuth';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { Celebration } from '../components/Celebration';
-import { Plus, Settings, Video, FileText, BarChart3, ChevronRight, ChevronLeft, Sparkles, Loader2, PlayCircle, Globe, ShieldCheck, Users, X, Search, Image, CheckCircle2, Rocket, Calendar, Flag, Filter, RefreshCw, User, Trash2, Edit3, Mail, DollarSign } from 'lucide-react';
+import { Plus, Settings, Video, FileText, BarChart3, ChevronRight, ChevronLeft, Sparkles, Loader2, PlayCircle, Globe, ShieldCheck, Users, X, Search, Image, CheckCircle2, Rocket, Calendar, Flag, Filter, RefreshCw, User, Trash2, Edit3, Mail, DollarSign, ShieldAlert, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { generateDummyCases, generateCaseImage, generateCalendarEvents } from '../services/geminiService';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, getDay, addDays, subDays, startOfWeek, endOfWeek, isToday as isDateToday, startOfQuarter, endOfQuarter, startOfYear, endOfYear, addYears, subYears, addQuarters, subQuarters } from 'date-fns';
@@ -31,7 +31,12 @@ export default function InternalDashboard() {
   const [specSearch, setSpecSearch] = useState('');
   const [showSpecResults, setShowSpecResults] = useState(false);
   const [isAddingSponsor, setIsAddingSponsor] = useState(false);
-  const [activeTab, setActiveTab] = useState<'cases' | 'sponsors' | 'live' | 'users' | 'calendar'>('cases');
+  const [activeTab, setActiveTab] = useState<'cases' | 'sponsors' | 'live' | 'users' | 'calendar' | 'invitations'>('cases');
+  const [invitations, setInvitations] = useState<any[]>([]);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [isInviting, setIsInviting] = useState(false);
+  const [reviewForm, setReviewForm] = useState({ notes: '', status: 'approved' });
+  const [selectedCaseForReview, setSelectedCaseForReview] = useState<any>(null);
   const [wizardStep, setWizardStep] = useState(0); // 0 for type selection
   const [caseType, setCaseType] = useState<'live' | 'recorded' | 'structured' | null>(null);
   const [reviewerSearch, setReviewerSearch] = useState('');
@@ -182,6 +187,92 @@ export default function InternalDashboard() {
     }
     fetchCalendarEvents();
   }, [user]);
+
+  useEffect(() => {
+    async function fetchInvitations() {
+      if (!user || activeTab !== 'invitations') return;
+      try {
+        const snapshot = await getDocs(collection(db, 'invitations'));
+        setInvitations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (err) {
+        console.error("Error fetching invitations:", err);
+      }
+    }
+    fetchInvitations();
+  }, [user, activeTab]);
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteEmail || isInviting) return;
+    setIsInviting(true);
+    try {
+      const emailLower = inviteEmail.toLowerCase().trim();
+      const inviteData = {
+        email: emailLower,
+        invitedBy: user?.uid,
+        invitedByName: user?.displayName || 'Admin',
+        status: 'pending',
+        targetRole: 'speaker',
+        createdAt: new Date().toISOString()
+      };
+      
+      // Use email as ID for rules enforcement
+      await setDoc(doc(db, 'invitations', emailLower), inviteData);
+      
+      // Create notification
+      await addDoc(collection(db, 'notifications'), {
+        title: 'New Invitation',
+        message: `You have been invited by ${inviteData.invitedByName} to submit a medical case.`,
+        userId: 'global_broadcast', // Or try to find user by email
+        type: 'system',
+        createdAt: new Date().toISOString(),
+        isRead: false
+      });
+
+      setInvitations(prev => [{ id: emailLower, ...inviteData }, ...prev]);
+      setInviteEmail('');
+      toast.success(`Invitation sent to ${emailLower}`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to send invitation");
+    } finally {
+      setIsInviting(false);
+    }
+  };
+
+  const handleReviewStep = async (caseId: string, status: string, notes: string) => {
+    try {
+      const caseDoc = doc(db, 'cases', caseId);
+      const updateData = {
+        status: status === 'approved' ? 'published' : 'draft', // or draft if rejected
+        reviewStatus: status,
+        reviewNotes: notes,
+        updatedAt: new Date().toISOString()
+      };
+      await updateDoc(caseDoc, updateData);
+      
+      // Notify presenter
+      const caseData = cases.find(c => c.id === caseId);
+      if (caseData?.presenterId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: caseData.presenterId,
+          title: `Case Review: ${status === 'approved' ? 'Approved' : 'Action Required'}`,
+          message: `Your case "${caseData.title}" has been ${status}. ${notes ? `Notes: ${notes}` : ''}`,
+          type: 'review_update',
+          caseId,
+          createdAt: new Date().toISOString(),
+          isRead: false
+        });
+      }
+
+      setCases(prev => prev.map(c => c.id === caseId ? { ...c, ...updateData } : c));
+      setSelectedCaseForReview(null);
+      toast.success(`Case ${status} successfully`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to update case review status");
+    }
+  };
 
   const syncCalendarData = async () => {
     setIsSyncingCalendar(true);
@@ -363,7 +454,7 @@ export default function InternalDashboard() {
       if (!user) return;
       try {
         const userEmailLower = (user.email || '').toLowerCase();
-        const isSuperAdmin = ['jaideep@assimilate.one', 'jaideep@medvarsity.com'].includes(userEmailLower);
+        const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(userEmailLower);
         const q = isSuperAdmin 
           ? query(collection(db, 'cases'))
           : query(collection(db, 'cases'), where('presenterId', '==', user.uid));
@@ -798,64 +889,61 @@ export default function InternalDashboard() {
   return (
     <div className="space-y-8">
       <Celebration active={showCelebration} onComplete={() => setShowCelebration(false)} type={celebrationType} />
-      <header className="flex items-center justify-between">
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Case Presentation Manager</h1>
-          <p className="text-gray-500 font-medium mt-1">Manage expert medical case presentations and series.</p>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-gray-900">Case Presentation Manager</h1>
+          <p className="text-sm md:text-base text-gray-500 font-medium mt-1">Manage expert medical case presentations and series.</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex bg-gray-100 p-1 rounded-xl mr-4">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+          <div className="flex bg-gray-100 p-1 rounded-xl overflow-x-auto no-scrollbar whitespace-nowrap">
             <button 
               onClick={() => setActiveTab('cases')}
-              className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all", activeTab === 'cases' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
+              className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all shrink-0", activeTab === 'cases' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
             >
               Cases
             </button>
             <button 
               onClick={() => setActiveTab('sponsors')}
-              className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all", activeTab === 'sponsors' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
+              className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all shrink-0", activeTab === 'sponsors' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
             >
-              Sponsor Partners
+              Sponsors
             </button>
             <button 
               onClick={() => setActiveTab('sponsorships')}
-              className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all", activeTab === 'sponsorships' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
+              className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all shrink-0", activeTab === 'sponsorships' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
             >
-              Sponsorship CMS
+              Sponsorships
             </button>
             <button 
               onClick={() => setActiveTab('users')}
-              className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all", activeTab === 'users' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
+              className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all shrink-0", activeTab === 'users' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
             >
-              Users & Ranking
+              Directory
             </button>
             <button 
               onClick={() => setActiveTab('calendar')}
-              className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all", activeTab === 'calendar' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
+              className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all shrink-0", activeTab === 'calendar' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
             >
-              Event Calendar
+              Calendar
+            </button>
+            <button 
+              onClick={() => setActiveTab('invitations')}
+              className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all shrink-0", activeTab === 'invitations' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
+            >
+              Faculty
             </button>
           </div>
           {activeTab === 'cases' && (
-            <div className="flex items-center gap-4">
-              {user?.email && ['jaideep@assimilate.one', 'jaideep@medvarsity.com'].includes(user.email) && (
-                <>
-                  <button 
-                    onClick={handleClearAll}
-                    disabled={isClearing}
-                    className="flex items-center gap-2 bg-red-50 text-red-600 px-4 py-2.5 rounded-xl font-bold hover:bg-red-100 transition-all disabled:opacity-50"
-                  >
-                    {isClearing ? <Loader2 size={18} className="animate-spin" /> : <span>Clear All</span>}
-                  </button>
-                  <button 
-                    onClick={handleSeedData}
-                    disabled={isSeeding}
-                    className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-100 transition-all active:scale-95 disabled:opacity-50"
-                  >
-                    {isSeeding ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} />}
-                    <span>Generate Expert Cases</span>
-                  </button>
-                </>
+            <div className="flex items-center gap-2">
+              {user?.email && SUPER_ADMIN_EMAILS.includes(user.email) && (
+                <button 
+                  onClick={handleSeedData}
+                  disabled={isSeeding}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2.5 rounded-xl font-bold hover:bg-indigo-100 transition-all active:scale-95 disabled:opacity-50 text-xs"
+                >
+                  {isSeeding ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                  <span className="hidden sm:inline">Seed Cases</span>
+                </button>
               )}
               <button 
                 onClick={() => {
@@ -863,10 +951,10 @@ export default function InternalDashboard() {
                   resetForm();
                   setIsCreating(true);
                 }}
-                className="flex items-center gap-2 bg-black text-white px-6 py-2.5 rounded-xl font-bold hover:bg-gray-800 transition-all active:scale-95"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-black text-white px-4 py-2.5 rounded-xl font-bold hover:bg-gray-800 transition-all active:scale-95 text-xs"
               >
-                <Plus size={20} />
-                <span>Upload New Case</span>
+                <Plus size={18} />
+                <span>Upload New</span>
               </button>
             </div>
           )}
@@ -946,30 +1034,65 @@ export default function InternalDashboard() {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-base leading-tight group-hover:text-indigo-600 transition-colors">{c.title}</h3>
+                        <h3 className="font-bold text-base leading-tight group-hover:text-indigo-600 transition-colors uppercase italic tracking-tighter">{c.title}</h3>
                         {c.presenterCountry && (
                           <img 
                             src={`https://flagsapi.com/${c.presenterCountry}/flat/32.png`} 
                             alt={c.presenterCountry} 
-                            className="w-4 h-4 rounded-sm"
+                            className="w-4 h-4 rounded-sm shadow-sm border border-gray-100"
                             title={c.presenterCountry}
                           />
                         )}
+                        <span className={cn(
+                          "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border",
+                          c.status === 'published' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                          c.status === 'pending_review' ? "bg-amber-50 text-amber-600 border-amber-100" :
+                          c.status === 'draft' ? "bg-gray-50 text-gray-400 border-gray-100" :
+                          "bg-indigo-50 text-indigo-600 border-indigo-100"
+                        )}>
+                          {c.status.replace('_', ' ')}
+                        </span>
+                        {c.reviewStatus && (
+                          <span className={cn(
+                            "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border",
+                            c.reviewStatus === 'approved' ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-rose-100 text-rose-800 border-rose-200"
+                          )}>
+                            {c.reviewStatus}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-sm text-gray-500 font-medium mt-0.5">{c.presenterName} • {c.caseType === 'live' ? 'LIVE' : 'RECORDED'} • {c.accreditation?.points} pt</p>
+                      <p className="text-sm text-gray-500 font-medium mt-0.5 flex items-center gap-2">
+                        <span className="font-bold text-indigo-600">{c.presenterName}</span>
+                        <span className="text-gray-300">|</span>
+                        <span className="uppercase text-[10px] tracking-tight">{c.caseType}</span>
+                        <span className="text-gray-300">|</span>
+                        <span className="text-emerald-600 font-bold tracking-tighter text-[11px] bg-emerald-50 px-1.5 rounded">{c.accreditation?.points} CME pt</span>
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="flex flex-wrap gap-1">
                        {c.languages?.slice(0,2).map((l: string) => <Globe key={l} size={14} className="text-gray-300" />)}
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-2">
+                      {c.status === 'pending_review' && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedCaseForReview(c);
+                            setReviewForm({ notes: '', status: 'approved' });
+                          }}
+                          className="bg-amber-500 text-white px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 transition-all shadow-md shadow-amber-500/20"
+                        >
+                          Review Now
+                        </button>
+                      )}
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
                           handleEdit(c);
                         }}
-                        className="p-2 text-gray-400 hover:text-indigo-600 transition-colors rounded-lg hover:bg-white"
+                        className="p-2 text-gray-400 hover:text-indigo-600 transition-colors rounded-lg hover:bg-white border border-transparent hover:border-gray-100"
                         title="Edit Case"
                       >
                         <Edit3 size={16} />
@@ -979,7 +1102,7 @@ export default function InternalDashboard() {
                           e.stopPropagation();
                           handleDeleteCase(c.id);
                         }}
-                        className="p-2 text-gray-400 hover:text-red-600 transition-colors rounded-lg hover:bg-white"
+                        className="p-2 text-gray-400 hover:text-red-600 transition-colors rounded-lg hover:bg-white border border-transparent hover:border-gray-100"
                         title="Delete Case"
                       >
                         <Trash2 size={16} />
@@ -994,13 +1117,28 @@ export default function InternalDashboard() {
         </div>
 
         <div className="space-y-6">
-          <div className="bg-indigo-600 text-white p-8 rounded-[32px] space-y-4 shadow-xl">
-            <h3 className="text-2xl font-bold leading-tight tracking-tight">Accreditation Simplified</h3>
-            <p className="text-indigo-100 text-sm leading-relaxed font-medium">
-              Upload your case videos and set up assessments. Upon completion, we automatically issue certificates and ACCME credits.
-            </p>
-            <button className="w-full bg-white text-indigo-600 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-all hover:scale-[1.02] active:scale-95">
-              Request Peer Review
+          <div className="bg-indigo-600 text-white p-8 rounded-[32px] space-y-6 shadow-xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-1000" />
+            <div>
+              <h3 className="text-2xl font-black leading-tight tracking-tighter italic uppercase">Submission Analytics</h3>
+              <p className="text-indigo-100 text-sm leading-relaxed font-medium mt-2">
+                {cases.filter(c => c.status === 'pending_review').length} cases awaiting expert peer review.
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white/10 p-4 rounded-2xl border border-white/10">
+                <p className="text-[10px] font-black uppercase opacity-60">Avg Review</p>
+                <p className="text-xl font-black">2.4 days</p>
+              </div>
+              <div className="bg-white/10 p-4 rounded-2xl border border-white/10">
+                <p className="text-[10px] font-black uppercase opacity-60">Approve rate</p>
+                <p className="text-xl font-black">88%</p>
+              </div>
+            </div>
+
+            <button className="w-full bg-white text-indigo-600 py-4 rounded-2xl font-black uppercase tracking-tighter italic hover:bg-indigo-50 transition-all hover:scale-[1.02] active:scale-95 shadow-lg">
+              Download Audit Trait
             </button>
           </div>
           
@@ -1484,6 +1622,82 @@ export default function InternalDashboard() {
              </div>
           </div>
         </div>
+      ) : activeTab === 'invitations' ? (
+        <div className="space-y-6">
+          <div className="bg-white rounded-[32px] border border-[#E5E5E5] overflow-hidden shadow-sm">
+            <div className="p-10 border-b border-[#E5E5E5] bg-gray-50/30">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div>
+                  <h2 className="text-2xl font-black italic tracking-tighter uppercase text-indigo-900 flex items-center gap-3">
+                    Author Access Control
+                    <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest italic not-italic">Internal ONLY</span>
+                  </h2>
+                  <p className="text-xs text-gray-500 font-medium mt-1">Authorize expert clinicians to submit peer-reviewed cases</p>
+                </div>
+                
+                <form onSubmit={handleInvite} className="flex-1 max-w-md flex gap-2">
+                  <input 
+                    type="email" 
+                    required
+                    placeholder="expert@institution.edu"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className="flex-1 bg-white border-gray-200 border rounded-xl px-4 py-3 text-sm font-bold outline-none focus:border-indigo-500 transition-all"
+                  />
+                  <button 
+                    disabled={isInviting}
+                    className="bg-black text-white px-6 py-3 rounded-xl font-bold text-xs hover:bg-gray-800 transition-all flex items-center gap-2 whitespace-nowrap"
+                  >
+                    {isInviting ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+                    Grant Access
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-[10px] uppercase font-black tracking-widest text-gray-400 border-b border-gray-100">
+                    <tr>
+                      <th className="px-6 py-4">Authorized Email</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Granted At</th>
+                      <th className="px-6 py-4">Authorized By</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {invitations.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-6 py-12 text-center text-gray-400 font-medium">No active invitations found.</td>
+                      </tr>
+                    ) : (
+                      invitations.map(invite => (
+                        <tr key={invite.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-6 py-4 font-bold text-gray-900">{invite.email}</td>
+                          <td className="px-6 py-4">
+                            <span className={cn(
+                              "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                              invite.status === 'pending' ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
+                            )}>
+                              {invite.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-xs font-medium text-gray-500">
+                            {invite.createdAt ? format(new Date(invite.createdAt), 'MMM dd, yyyy HH:mm') : 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 text-xs font-bold text-indigo-600 underline decoration-indigo-200">
+                            {invite.invitedByName || 'N/A'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
       ) : activeTab === 'sponsors' ? (
         <div className="space-y-6">
           <div className="bg-white rounded-[32px] border border-[#E5E5E5] overflow-hidden shadow-sm">
@@ -1878,6 +2092,72 @@ export default function InternalDashboard() {
            )}
         </div>
       ) : null}
+
+      {selectedCaseForReview && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-[40px] w-full max-w-lg overflow-hidden shadow-2xl border border-white/20"
+          >
+            <div className="p-8 border-b border-gray-100 bg-amber-50/30 flex justify-between items-center">
+               <div>
+                  <h2 className="text-xl font-black uppercase italic tracking-tighter text-amber-900">Expert Peer Review</h2>
+                  <p className="text-xs text-amber-700/60 font-bold tracking-widest mt-1">Reviewing: {selectedCaseForReview.title}</p>
+               </div>
+               <button 
+                 onClick={() => setSelectedCaseForReview(null)}
+                 className="p-2 hover:bg-white rounded-full transition-colors"
+               >
+                 <X size={20} className="text-amber-900" />
+               </button>
+            </div>
+            
+            <div className="p-8 space-y-6">
+               <div className="space-y-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 font-black">Decision</p>
+                  <div className="grid grid-cols-2 gap-4">
+                     <button 
+                       onClick={() => setReviewForm({ ...reviewForm, status: 'approved' })}
+                       className={cn(
+                         "py-4 rounded-2xl font-black uppercase tracking-tighter italic border-2 transition-all",
+                         reviewForm.status === 'approved' ? "bg-emerald-600 text-white border-emerald-600 shadow-lg shadow-emerald-600/20" : "bg-white text-gray-400 border-gray-100 hover:border-emerald-100"
+                       )}
+                     >
+                        Approve & Publish
+                     </button>
+                     <button 
+                       onClick={() => setReviewForm({ ...reviewForm, status: 'rejected' })}
+                       className={cn(
+                         "py-4 rounded-2xl font-black uppercase tracking-tighter italic border-2 transition-all",
+                         reviewForm.status === 'rejected' ? "bg-rose-600 text-white border-rose-600 shadow-lg shadow-rose-600/20" : "bg-white text-gray-400 border-gray-100 hover:border-rose-100"
+                       )}
+                     >
+                        Reject / Action Required
+                     </button>
+                  </div>
+               </div>
+
+               <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Review Notes (Sent to Author)</label>
+                  <textarea 
+                    value={reviewForm.notes}
+                    onChange={(e) => setReviewForm({ ...reviewForm, notes: e.target.value })}
+                    className="w-full bg-gray-50 border-gray-100 border rounded-2xl p-4 min-h-[120px] font-bold text-sm outline-none focus:border-indigo-500 transition-all text-gray-900" 
+                    placeholder="Provide scientific feedback or reasons for rejection..."
+                  />
+               </div>
+
+               <button 
+                 onClick={() => handleReviewStep(selectedCaseForReview.id, reviewForm.status, reviewForm.notes)}
+                 className="w-full bg-black text-white py-5 rounded-3xl font-black uppercase tracking-tighter italic text-lg hover:bg-gray-800 transition-all active:scale-95 shadow-2xl"
+               >
+                  Finalize Review Cycle
+               </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {isCreating && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">

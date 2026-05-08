@@ -313,39 +313,61 @@ export default function CaseDetail() {
       navigate('/login');
       return;
     }
-    if (isHyping || hasHyped) return;
+    
+    if (isHyping) return;
     setIsHyping(true);
+    
     try {
       const hypeId = `${user.uid}_${id}`;
-      await setDoc(doc(db, 'hypes', hypeId), {
-        userId: user.uid,
-        caseId: id,
-        createdAt: new Date().toISOString()
-      });
-
-      // Boost case hypes
-      await updateDoc(doc(db, 'cases', id!), {
-        hypes: increment(1)
-      });
-
-      // Boost user profile rank
-      await updateDoc(doc(db, 'users', user.uid), {
-        "stats.hypePoints": increment(50) // Hype gives more boost than just watching
-      });
-
-      setHasHyped(true);
-      setCaseData((prev: any) => ({ ...prev, hypes: (prev.hypes || 0) + 1 }));
-      refreshProfile();
-      setCelebrationType('confetti');
-      setShowCelebration(true);
       
-      // Auto-turn off celebration
-      setTimeout(() => setShowCelebration(false), 5000);
+      if (hasHyped) {
+        // Unhype
+        await deleteDoc(doc(db, 'hypes', hypeId));
+        
+        // Remove case hypes
+        await updateDoc(doc(db, 'cases', id!), {
+          hypes: increment(-1)
+        });
 
-      toast.success("Hype recorded!", {
-        description: "You've boosted this case on the leaderboard and increased your own ranking points.",
-        duration: 5000,
-      });
+        // Remove user profile rank points
+        await updateDoc(doc(db, 'users', user.uid), {
+          "stats.hypePoints": increment(-50)
+        });
+
+        setHasHyped(false);
+        setCaseData((prev: any) => ({ ...prev, hypes: Math.max(0, (prev.hypes || 0) - 1) }));
+        toast.info("Hype removed");
+      } else {
+        // Hype
+        await setDoc(doc(db, 'hypes', hypeId), {
+          userId: user.uid,
+          caseId: id,
+          createdAt: new Date().toISOString()
+        });
+
+        // Boost case hypes
+        await updateDoc(doc(db, 'cases', id!), {
+          hypes: increment(1)
+        });
+
+        // Boost user profile rank
+        await updateDoc(doc(db, 'users', user.uid), {
+          "stats.hypePoints": increment(50) // Hype gives more boost than just watching
+        });
+
+        setHasHyped(true);
+        setCaseData((prev: any) => ({ ...prev, hypes: (prev.hypes || 0) + 1 }));
+        setCelebrationType('confetti');
+        setShowCelebration(true);
+        setTimeout(() => setShowCelebration(false), 5000);
+
+        toast.success("Hype recorded!", {
+          description: "You've boosted this case on the leaderboard and increased your own ranking points.",
+          duration: 5000,
+        });
+      }
+      
+      refreshProfile();
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'hypes');
     } finally {
@@ -448,6 +470,15 @@ export default function CaseDetail() {
     if (!user || hasEarnedCredits) return;
     
     try {
+      // First ensure the progress is officially 'completed' in the database
+      // This provides a server-side record that the rules can verify
+      const progressId = `${user.uid}_${id}`;
+      await updateDoc(doc(db, 'user_progress', progressId), {
+        status: 'completed',
+        progress: 100, // Explicitly set to 100 for credit verification
+        updatedAt: new Date().toISOString()
+      });
+
       const creditId = `${user.uid}_${id}`;
       const points = caseData.accreditation?.points || 0;
       
@@ -461,7 +492,8 @@ export default function CaseDetail() {
       
       await updateDoc(doc(db, 'users', user.uid), {
         "stats.creditPoints": increment(points),
-        "stats.sessionsWatched": increment(1)
+        "stats.sessionsWatched": increment(1),
+        "stats.casesCompleted": increment(1)
       });
       
       setHasEarnedCredits(true);
@@ -505,15 +537,15 @@ export default function CaseDetail() {
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-10 gap-8">
         
         {/* Main Content Area */}
-        <div className="lg:col-span-7 space-y-8 min-w-0 order-1">
+        <div className="lg:col-span-7 space-y-6 md:space-y-8 min-w-0 order-1 px-1 md:px-0">
           
           {/* Header Section */}
-          <div className="space-y-4">
+          <div className="space-y-4 px-2 md:px-0">
             {caseData.isSponsored && sponsorData && (
               <motion.div 
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="relative w-full rounded-[32px] overflow-hidden group mb-8"
+                className="relative w-full rounded-[24px] md:rounded-[32px] overflow-hidden group mb-6 md:mb-8"
               >
                 {/* Sponsor Banner Image or Glass Background */}
                 <div className="absolute inset-0 z-0">
@@ -570,7 +602,7 @@ export default function CaseDetail() {
 
           {/* Video Player */}
           <div 
-            className="relative aspect-video rounded-[40px] overflow-hidden bg-black border border-gray-200 dark:border-white/5 group shadow-2xl transition-all"
+            className="relative aspect-video rounded-[24px] md:rounded-[40px] overflow-hidden bg-black border border-gray-200 dark:border-white/5 group shadow-2xl transition-all"
             onMouseMove={handleMouseMove}
             onMouseLeave={() => isPlaying && !showVideoOptions && setShowControls(false)}
             onClick={handleMouseMove}
@@ -877,23 +909,23 @@ export default function CaseDetail() {
                </button>
                <button 
                  onClick={handleHype}
-                 disabled={isHyping || hasHyped}
+                 disabled={isHyping}
                  className={cn(
                    "px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-all shadow-lg",
                    hasHyped 
-                     ? "bg-emerald-500 text-white cursor-default" 
+                     ? "bg-emerald-500 text-white shadow-emerald-500/20" 
                      : "bg-orange-500 text-black hover:bg-orange-400 active:scale-95 shadow-[0_0_20px_rgba(249,115,22,0.3)] disabled:opacity-50"
                  )}
                >
                  {isHyping ? <Loader2 size={16} className="animate-spin" /> : hasHyped ? <CheckCircle2 size={16} /> : <Rocket size={16} />}
-                 {hasHyped ? 'Hyped!' : `Hype this case (+${caseData.hypes || 0})`}
+                 {hasHyped ? (isHyping ? 'Updating...' : 'Hyped!') : `Hype this case (+${caseData.hypes || 0})`}
                </button>
             </div>
           </div>
 
           {/* Detailed Content Tabs */}
-          <div className="space-y-6">
-            <div className="flex gap-8 border-b border-gray-100 dark:border-white/5">
+          <div className="space-y-6 px-2 md:px-0">
+            <div className="flex gap-4 md:gap-8 border-b border-gray-100 dark:border-white/5 overflow-x-auto no-scrollbar">
               {[
                 { id: 'description', label: 'Case Description' },
                 { id: 'summary', label: 'Case Summary' },
@@ -903,7 +935,7 @@ export default function CaseDetail() {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
                   className={cn(
-                    "pb-4 text-xs font-bold uppercase tracking-widest transition-all relative",
+                    "pb-4 text-[10px] md:text-xs font-bold uppercase tracking-widest transition-all relative shrink-0",
                     activeTab === tab.id ? "text-gray-900 dark:text-white" : "text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/60"
                   )}
                 >

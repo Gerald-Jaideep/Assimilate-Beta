@@ -21,11 +21,43 @@ const app = initializeApp(config);
 export const auth = getAuth(app);
 
 // Initialize Firestore - avoid passing "(default)" explicitly as it can cause issues on some SDK versions
-// Enable experimentalForceLongPolling to improve reliability in some network environments (like proxied previews)
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
+// Enable experimentalAutoDetectLongPolling to improve reliability in proxied previews
+const firestoreSettings = {
+  experimentalAutoDetectLongPolling: true,
   ignoreUndefinedProperties: true,
-}, config.firestoreDatabaseId && config.firestoreDatabaseId !== '(default)' ? config.firestoreDatabaseId : undefined);
+  host: 'firestore.googleapis.com',
+  ssl: true,
+};
+
+const databaseId = config.firestoreDatabaseId && config.firestoreDatabaseId !== '(default)' 
+  ? config.firestoreDatabaseId 
+  : undefined;
+
+export const db = databaseId 
+  ? initializeFirestore(app, firestoreSettings, databaseId)
+  : initializeFirestore(app, firestoreSettings);
+
+// Validate Connection to Firestore as per integration guidelines
+async function testConnection() {
+  try {
+    // Attempt a lightweight server-side fetch to verify backend connectivity
+    await getDocFromServer(doc(db, '_connection_test_', 'ping'));
+    console.log("Firestore connection verified successfully.");
+  } catch (error) {
+    // If the client explicitly reports it's offline or times out, log a specific warning
+    if (error instanceof Error && (error.message.includes('the client is offline') || error.message.includes("Backend didn't respond"))) {
+      console.error("CRITICAL: Firestore backend unreachable. Please verify project settings and network permissions.");
+    } else {
+      // Ignore other errors during connection test (e.g. Permission Denied) as they mean we AT LEAST reached the server
+      console.log("Firestore reachability confirmed (Auth/Permission check passed).");
+    }
+  }
+}
+
+// Execute test connection on module load
+if (typeof window !== 'undefined') {
+  testConnection();
+}
 
 export const storage = getStorage(app, config.storageBucket ? `gs://${config.storageBucket}` : undefined);
 

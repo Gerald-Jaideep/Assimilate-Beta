@@ -74,6 +74,37 @@
         "timestamp": { "type": "string", "format": "date-time" }
       }
     },
+    "Notification": {
+      "title": "Notification",
+      "description": "System alert or review update for a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["review_update", "submission_pending", "overdue", "system"] },
+        "caseId": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "type", "createdAt"]
+    },
+    "Invitation": {
+      "title": "Invitation",
+      "description": "Authorization for a speaker/expert to submit a case",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "invitedBy": { "type": "string" },
+        "invitedByName": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "expired"] },
+        "targetRole": { "type": "string", "enum": ["speaker", "expert"] },
+        "caseType": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "acceptedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "invitedBy", "status", "createdAt"]
+    },
     "MedicalCase": {
       "title": "Medical Case",
       "description": "A complex or rare medical case presentation",
@@ -118,8 +149,12 @@
         "reviewerName": { "type": "string" },
         "reviewerPhotoURL": { "type": "string" },
         "reviewerCredentials": { "type": "string" },
-        "reviewStatus": { "type": "string", "enum": ["pending", "reviewed"] },
-        "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
+        "reviewStatus": { "type": "string", "enum": ["pending", "reviewed", "rejected", "approved"] },
+        "reviewNotes": { "type": "string" },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "reviewQueuePosition": { "type": "number" },
+        "reviewDeadline": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["draft", "pending_review", "peer_review", "published", "scheduled", "archived"] },
         "scheduledAt": { "type": "string", "format": "date-time" },
         "googleMeetLink": { "type": "string" },
         "accreditation": {
@@ -136,7 +171,8 @@
         "sponsorDisclaimer": { "type": "string" },
         "expiryDate": { "type": "string", "format": "date-time" },
         "seriesId": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "presenterId", "status"]
     },
@@ -249,6 +285,14 @@
     "user_progress/{progressId}": {
       "schema": "UserProgress",
       "description": "Real-time tracking of case viewing progress for session persistence."
+    },
+    "invitations/{invitationId}": {
+      "schema": "Invitation",
+      "description": "Access control invitations for speakers and experts"
+    },
+    "notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications and alerts"
     }
   }
 }

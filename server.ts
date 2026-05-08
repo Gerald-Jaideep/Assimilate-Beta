@@ -26,13 +26,54 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
+  experimentalAutoDetectLongPolling: true,
   ignoreUndefinedProperties: true,
+  host: 'firestore.googleapis.com',
+  ssl: true,
 }, firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)' ? firebaseConfig.firestoreDatabaseId : undefined);
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // 0. Middleware for AI Proxy
+  app.use(express.json({ limit: '10mb' }));
+
+  // 1. AI Proxy Routes
+  app.post("/api/ai/generate-image", async (req, res) => {
+    try {
+      const { title, description, specialty } = req.body;
+      const { generateCaseImage } = await import("./src/services/geminiService.server.js");
+      const url = await generateCaseImage(title, description, specialty);
+      res.json({ url });
+    } catch (error: any) {
+      console.error("AI Image Route Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/ai/calendar", async (req, res) => {
+    try {
+      const { generateCalendarEvents } = await import("./src/services/geminiService.server.js");
+      const events = await generateCalendarEvents();
+      res.json(events);
+    } catch (error: any) {
+      console.error("AI Calendar Route Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/ai/dummy-cases", async (req, res) => {
+    try {
+      const count = parseInt(req.query.count as string) || 4;
+      const { generateDummyCases } = await import("./src/services/geminiService.server.js");
+      const cases = await generateDummyCases(count);
+      res.json(cases);
+    } catch (error: any) {
+      console.error("AI Dummy Cases Route Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   // 1. Sitemap.xml Route
   app.get("/sitemap.xml", async (req, res) => {
@@ -123,7 +164,16 @@ async function startServer() {
     app.use(express.static(distPath, { index: false }));
   }
 
-  // 4. SPA Catch-all with Meta Tag Injection
+      // 4. SPA Catch-all with Meta Tag Injection
+  const escapeHtml = (unsafe: string) => {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  };
+
   app.get("*", async (req, res, next) => {
     const url = req.originalUrl;
     
@@ -159,11 +209,11 @@ async function startServer() {
         }
       }
 
-      // Inject into template
+      // Inject into template with proper escaping
       const html = template
-        .replace(/<!-- PAGE_TITLE -->/g, title)
-        .replace(/<!-- PAGE_DESCRIPTION -->/g, description)
-        .replace(/<!-- PAGE_IMAGE -->/g, image);
+        .replace(/<!-- PAGE_TITLE -->/g, escapeHtml(title))
+        .replace(/<!-- PAGE_DESCRIPTION -->/g, escapeHtml(description))
+        .replace(/<!-- PAGE_IMAGE -->/g, escapeHtml(image));
 
       res.status(200).set({ "Content-Type": "text/html" }).end(html);
     } catch (e) {
