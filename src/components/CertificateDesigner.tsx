@@ -12,6 +12,7 @@ export function CertificateDesigner() {
   const [loading, setLoading] = useState(false);
   const [uploadingBrand, setUploadingBrand] = useState(false);
   const [uploadingSponsor, setUploadingSponsor] = useState(false);
+  const [uploadingSignature, setUploadingSignature] = useState(false);
 
   const [newTemplate, setNewTemplate] = useState({
     name: '',
@@ -24,7 +25,11 @@ export function CertificateDesigner() {
       sponsorLogoPos: { x: 150, y: 50 },
       customText: '',
       customTextPos: { x: 200, y: 200 },
-      customTextFontSize: 18
+      customTextFontSize: 18,
+      signatureLogoUrl: '',
+      signatoryName: 'GERALD JAIDEEP',
+      signatoryDesignation: 'CEO - MEDVARSITY',
+      signatureScale: 1
     } as CertificateLayoutData
   });
 
@@ -69,23 +74,26 @@ export function CertificateDesigner() {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'brand' | 'sponsor') => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'brand' | 'sponsor' | 'signature') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (type === 'brand') setUploadingBrand(true);
-    else setUploadingSponsor(true);
+    else if (type === 'sponsor') setUploadingSponsor(true);
+    else setUploadingSignature(true);
 
     try {
       const storageRef = ref(storage, `certificates/logos/${Date.now()}_${file.name}`);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
       
+      const key = type === 'brand' ? 'brandLogoUrl' : type === 'sponsor' ? 'sponsorLogoUrl' : 'signatureLogoUrl';
+
       setNewTemplate(prev => ({
         ...prev,
         layoutData: {
           ...prev.layoutData,
-          [type === 'brand' ? 'brandLogoUrl' : 'sponsorLogoUrl']: url
+          [key]: url
         }
       }));
       toast.success('Logo uploaded!');
@@ -94,7 +102,8 @@ export function CertificateDesigner() {
       toast.error('Failed to upload image. Ensure storage is reachable.');
     } finally {
       if (type === 'brand') setUploadingBrand(false);
-      else setUploadingSponsor(false);
+      else if (type === 'sponsor') setUploadingSponsor(false);
+      else setUploadingSignature(false);
     }
   };
 
@@ -164,6 +173,33 @@ export function CertificateDesigner() {
                <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Custom Text Font Size</label>
                   <input type="number" min="10" max="60" value={newTemplate.layoutData.customTextFontSize || 18} onChange={e => setNewTemplate({...newTemplate, layoutData: { ...newTemplate.layoutData, customTextFontSize: Number(e.target.value) }})} className="w-full bg-gray-50 border-0 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+               </div>
+
+               <div>
+                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center justify-between">
+                     <span>Signature Logo</span>
+                     <label className="cursor-pointer text-indigo-600 hover:text-indigo-700 flex items-center gap-1 group">
+                       {uploadingSignature ? <Loader2 size={12} className="animate-spin" /> : <UploadCloud size={12} />}
+                       <span className="group-hover:underline">Upload</span>
+                       <input type="file" accept="image/*" className="hidden" onChange={e => handleFileUpload(e, 'signature')} />
+                     </label>
+                  </label>
+                  <input type="url" placeholder="https://.../signature.png" value={newTemplate.layoutData.signatureLogoUrl || ''} onChange={e => setNewTemplate({...newTemplate, layoutData: { ...newTemplate.layoutData, signatureLogoUrl: e.target.value }})} className="w-full bg-gray-50 border-0 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+               </div>
+
+               <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Signature Scale</label>
+                  <input type="number" min="0.1" max="5" step="0.1" value={newTemplate.layoutData.signatureScale || 1} onChange={e => setNewTemplate({...newTemplate, layoutData: { ...newTemplate.layoutData, signatureScale: Number(e.target.value) }})} className="w-full bg-gray-50 border-0 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+               </div>
+
+               <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Signatory Name</label>
+                  <input type="text" value={newTemplate.layoutData.signatoryName || ''} onChange={e => setNewTemplate({...newTemplate, layoutData: { ...newTemplate.layoutData, signatoryName: e.target.value }})} className="w-full bg-gray-50 border-0 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+               </div>
+               
+               <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Signatory Designation</label>
+                  <input type="text" value={newTemplate.layoutData.signatoryDesignation || ''} onChange={e => setNewTemplate({...newTemplate, layoutData: { ...newTemplate.layoutData, signatoryDesignation: e.target.value }})} className="w-full bg-gray-50 border-0 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
                </div>
             </div>
 

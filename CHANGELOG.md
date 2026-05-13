@@ -7,6 +7,13 @@ All notable changes to the Assimilate One platform will be documented in this fi
 - **Platform Snapshot:** Created a snapshot of the current stage as a major v0.5 release. Any changes made subsequently will minimally affect the core functionality of this stage.
 - **Fixed:** Resolved `Related cases` and `Presenter cases` fetch errors ("Missing or insufficient permissions") by updating the queries to explicitly filter for `status` `in` `['published', 'scheduled']` to satisfy Firestore security rules.
 
+## [1.3.1] - 2026-05-13
+### Fixed
+- **Certificate Designer Layouts:** Fixed drag & drop positioning mechanics for brand logos, sponsor logos, and custom text elements. Added proper z-layer rendering to prevent elements from vanishing behind the background.
+- **Certificate Designer:** Added capability to freely drag and position default elements (Name, Title, QR Code, CME details, Date, etc.).
+- **Certificate Signatures:** New options to upload signature logos, edit signatory name & designation, and adjust scale within the Certificate Designer.
+- **Certificate CME Compliance:** Updated the language defining CME credit points on issued certificates to strictly adhere to ACCME guidelines.
+
 ## [1.3.0] - 2026-05-13
 ### Added
 - **Assessment Engine:** Implemented comprehensive objective-style assessments for all recorded and live cases with configurable difficulty (Simple/Moderate/Difficult). Includes 5 min limits, 5 attempts max, and 70% passing criteria.

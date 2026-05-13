@@ -12,8 +12,8 @@ Assimilate One is a high-performance clinical education platform designed for pe
 
 ### 🎓 Assessment & Certification
 - **Post-Case Assessments:** Objective-based questions with configurable time limits, attempts, difficulty levels, and pass criteria.
-- **Automated Certification:** Auto-issues digital certificates (with dynamic layouts and CME credits) upon assessment completion.
-- **Certificate Designer (CMS):** Internal builder for Super Admins to manage standard, custom, and sponsored certificate templates.
+- **Automated Certification:** Auto-issues digital certificates (with drag-and-drop dynamic layouts and ACCME-compliant CME credits) upon assessment completion.
+- **Certificate Designer (CMS):** Internal builder for Super Admins to manage standard, custom, and sponsored certificate templates. Add brand logos, sponsor logos, and custom text with visual placement.
 - **Credential Verification:** QR codes and public URLs to allow third-party verification of earned certificates.
 - **Export & Sharing:** Download as PDF, direct printing, and social sharing capabilities.
 
