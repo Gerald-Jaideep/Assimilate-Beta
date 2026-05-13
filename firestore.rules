@@ -252,5 +252,31 @@ service cloud.firestore {
       allow update: if isAdmin() && isValidEvent(incoming());
       allow delete: if isAdmin();
     }
+
+    // --- 8. ASSESSMENTS AND CERTIFICATES ---
+    match /cases/{caseId}/assessments/{assessmentId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /users/{userId}/assessment_attempts/{attemptId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin()) &&
+                       incoming().userId == existing().userId;
+      allow delete: if isAdmin();
+    }
+
+    match /certificate_templates/{templateId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /users/{userId}/certificates/{certificateId} {
+      allow read: if true; // Allow public read for QR verification
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
   }
 }

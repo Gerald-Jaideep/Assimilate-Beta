@@ -14,6 +14,7 @@ import { AuthProvider, useAuth, SUPER_ADMIN_EMAILS } from './hooks/useAuth';
 import { ThemeProvider } from './hooks/useTheme';
 import LandingPage from './pages/CaseFeed';
 import CaseDetail from './pages/CaseDetail';
+import SeriesView from './pages/SeriesView';
 import Profile from './pages/Profile';
 import SpeakerProfile from './pages/SpeakerProfile';
 import InternalDashboard from './pages/InternalDashboard';
@@ -21,6 +22,7 @@ import SpeakerDashboard from './pages/SpeakerDashboard';
 import SponsorDashboard from './pages/SponsorDashboard';
 import AudienceView from './pages/AudienceView';
 import Login from './pages/Login';
+import CertificateVerify from './pages/CertificateVerify';
 import { Nav } from './components/layout/Nav';
 import OnboardingModal from './components/auth/OnboardingModal';
 import { Toaster } from 'sonner';
@@ -54,6 +56,8 @@ function AppContent() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/case/:id" element={<CaseDetail />} />
+          <Route path="/series/:id" element={<SeriesView />} />
+          <Route path="/verify/:id" element={<CertificateVerify />} />
           <Route path="/profile" element={
             <ProtectedRoute>
               <Profile />

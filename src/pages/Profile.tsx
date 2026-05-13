@@ -32,11 +32,14 @@ import {
 } from 'recharts';
 import { Link } from 'react-router-dom';
 
+import { CertificateViewer } from '../components/CertificateViewer';
+
 export default function Profile() {
   const { user, profile } = useAuth();
   const [credits, setCredits] = useState<any[]>([]);
   const [interactions, setInteractions] = useState<any[]>([]);
   const [bookmarkedCases, setBookmarkedCases] = useState<any[]>([]);
+  const [certificates, setCertificates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [timeFilter, setTimeFilter] = useState<'all' | 'year' | 'month' | 'week'>('year');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -64,6 +67,20 @@ export default function Profile() {
         const interactSnap = await getDocs(interactQ);
         const interactionsData = interactSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         setInteractions(interactionsData);
+
+        // Fetch user certificates
+        const certsSnap = await getDocs(
+          query(collection(db, 'users', user.uid, 'certificates'))
+        );
+        const certData = [];
+        for (const c of certsSnap.docs) {
+           const cData = c.data();
+           const caseDoc = await getDoc(doc(db, 'cases', cData.caseId));
+           if (caseDoc.exists()) {
+             certData.push({ id: c.id, ...cData, caseData: caseDoc.data() });
+           }
+        }
+        setCertificates(certData);
 
         // Fetch bookmarked case details
         const bookmarkIds = interactionsData
@@ -378,6 +395,32 @@ export default function Profile() {
           </div>
         </div>
       </section>
+
+      {/* Certificates Section */}
+      {certificates.length > 0 && (
+        <section className="space-y-8 pt-8 border-t border-gray-200 dark:border-white/10">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-2xl border border-indigo-500/20">
+              <Award size={20} />
+            </div>
+            <h3 className="text-2xl font-black tracking-tighter">My Certificates</h3>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {certificates.map(cert => (
+              <div key={cert.id} className="scale-90 origin-top-left hover:scale-[0.92] transition-transform duration-500">
+                <CertificateViewer
+                  studentName={profile?.displayName || 'Student'}
+                  caseTitle={cert.caseData?.title || 'Case Discussion'}
+                  cmeCredits={cert.caseData?.accreditation?.points || 0}
+                  date={new Date(cert.issuedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase()}
+                  qrCodeUrl={`https://app.assimilate.one/verify/${cert.id}`}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
     </div>
   );

@@ -164,7 +164,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async () => {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    provider.setCustomParameters({
+      prompt: 'select_account'
+    });
+    
+    // Check if we are inside an iframe.
+    // If inside an iframe (like AI Studio preview), use popup.
+    // If on the hosted site (top level), use redirect to avoid popup-closed issues.
+    try {
+      if (window.self !== window.top) {
+        await signInWithPopup(auth, provider);
+      } else {
+        // Fallback to signInWithPopup for now since redirect often fails on certain domains without full config
+        await signInWithPopup(auth, provider);
+      }
+    } catch (e: any) {
+      console.error("Popup failed:", e);
+      throw e;
+    }
   };
 
   const signUpEmail = async (email: string, pass: string) => {

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Celebration } from '../components/Celebration';
 import { Plus, Settings, Video, FileText, BarChart3, ChevronRight, ChevronLeft, Sparkles, Loader2, PlayCircle, Globe, ShieldCheck, Users, X, Search, Image, CheckCircle2, Rocket, Calendar, Flag, Filter, RefreshCw, User, Trash2, Edit3, Mail, DollarSign, ShieldAlert, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { CertificateDesigner } from '../components/CertificateDesigner';
 import { generateDummyCases, generateCaseImage, generateCalendarEvents } from '../services/geminiService';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, getDay, addDays, subDays, startOfWeek, endOfWeek, isToday as isDateToday, startOfQuarter, endOfQuarter, startOfYear, endOfYear, addYears, subYears, addQuarters, subQuarters } from 'date-fns';
 
@@ -20,7 +21,6 @@ export default function InternalDashboard() {
   const [cases, setCases] = useState<any[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isSeeding, setIsSeeding] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,7 +31,7 @@ export default function InternalDashboard() {
   const [specSearch, setSpecSearch] = useState('');
   const [showSpecResults, setShowSpecResults] = useState(false);
   const [isAddingSponsor, setIsAddingSponsor] = useState(false);
-  const [activeTab, setActiveTab] = useState<'cases' | 'sponsors' | 'live' | 'users' | 'calendar' | 'invitations'>('cases');
+  const [activeTab, setActiveTab] = useState<'cases' | 'sponsors' | 'live' | 'users' | 'calendar' | 'invitations' | 'certificates' | 'sponsorships'>('cases');
   const [invitations, setInvitations] = useState<any[]>([]);
   const [inviteEmail, setInviteEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
@@ -54,6 +54,10 @@ export default function InternalDashboard() {
   const [userLoading, setUserLoading] = useState(false);
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<string>('all');
+  
+  // New Filter & Sort States
+  const [caseFilterType, setCaseFilterType] = useState<string>('all');
+  const [caseSortType, setCaseSortType] = useState<string>('recent');
 
   // Sponsors Form State
   const [newSponsor, setNewSponsor] = useState({
@@ -138,6 +142,9 @@ export default function InternalDashboard() {
     isSponsored: false,
     sponsorId: '',
     expiryDate: '',
+    isPartOfSeries: false,
+    seriesId: '',
+    seriesName: '',
     // Structured Clinical Data (CRF)
     clinicalData: {
       presentation: '',
@@ -473,72 +480,6 @@ export default function InternalDashboard() {
     }
     fetchCases();
   }, [user]);
-
-  const handleSeedData = async () => {
-    if (!user || isSeeding) return;
-    setIsSeeding(true);
-    setError(null);
-    try {
-      const mockCases = await generateDummyCases(8);
-      const addedCases: any[] = [];
-      const { uploadBase64Image } = await import('../services/storageService');
-      
-      for (const caseData of mockCases) {
-        // Generate a random speaker for each seeded case
-        const speakerId = `speaker_${Math.random().toString(36).substr(2, 9)}`;
-        const speakerData = {
-          displayName: caseData.speakerName || 'Expert Clinician',
-          email: `${caseData.speakerName?.toLowerCase().replace(/\s+/g, '.')}@medical-expert.com`,
-          role: 'speaker',
-          roles: ['speaker'],
-          region: caseData.presenterCountry || 'US',
-          bio: caseData.presenterBio || 'Renowned expert in their clinical field.',
-          qualifications: caseData.presenterQualifications || 'MD, PhD',
-          profileCompletion: 85,
-          updatedAt: new Date().toISOString()
-        };
-
-        // Persist speaker
-        await setDoc(doc(db, 'users', speakerId), speakerData);
-
-        // Upload AI thumbnail if needed
-        let finalThumb = 'https://images.unsplash.com/photo-1576091160550-217359f4ecf8?auto=format&fit=crop&q=80&w=2000';
-        if (caseData.thumbnailUrl && caseData.thumbnailUrl.startsWith('data:image')) {
-          try {
-            finalThumb = await uploadBase64Image(caseData.thumbnailUrl, `cases/thumbs/seed_${Date.now()}.png`);
-          } catch (e) {
-            console.warn("Seeding image upload failed", e);
-          }
-        } else if (caseData.thumbnailUrl) {
-          finalThumb = caseData.thumbnailUrl;
-        }
-
-        const payload = {
-          ...caseData,
-          presenterId: speakerId,
-          thumbnailUrl: finalThumb,
-          status: 'published',
-          accreditation: { points: Number((Math.random() * 2 + 1).toFixed(1)), type: 'ACCME' },
-          views: Math.floor(Math.random() * 8000),
-          likes: Math.floor(Math.random() * 800),
-          shares: Math.floor(Math.random() * 150),
-          bookmarks: Math.floor(Math.random() * 300),
-          createdAt: new Date().toISOString(),
-        };
-
-        const docRef = await addDoc(collection(db, 'cases'), payload);
-        addedCases.push({ id: docRef.id, ...payload });
-      }
-      
-      setCases(prev => [...addedCases, ...prev]);
-      toast.success(`Successfully generated ${addedCases.length} realistic medical cases!`);
-    } catch (err) {
-      console.error("Seeding error:", err);
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsSeeding(false);
-    }
-  };
 
   const handleClearAll = async () => {
     if (!user || isClearing) return;
@@ -932,19 +873,15 @@ export default function InternalDashboard() {
             >
               Faculty
             </button>
+            <button 
+              onClick={() => setActiveTab('certificates')}
+              className={cn("px-4 py-2 text-sm font-bold rounded-lg transition-all shrink-0", activeTab === 'certificates' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black")}
+            >
+              Certificates
+            </button>
           </div>
           {activeTab === 'cases' && (
             <div className="flex items-center gap-2">
-              {user?.email && SUPER_ADMIN_EMAILS.includes(user.email) && (
-                <button 
-                  onClick={handleSeedData}
-                  disabled={isSeeding}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2.5 rounded-xl font-bold hover:bg-indigo-100 transition-all active:scale-95 disabled:opacity-50 text-xs"
-                >
-                  {isSeeding ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
-                  <span className="hidden sm:inline">Seed Cases</span>
-                </button>
-              )}
               <button 
                 onClick={() => {
                   setEditingCase(null);
@@ -980,10 +917,10 @@ export default function InternalDashboard() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {[
-          { label: 'Published Cases', value: cases.length, icon: PlayCircle, color: 'text-indigo-500' },
-          { label: 'Total Learning Views', value: '18.4K', icon: Users, color: 'text-emerald-500' },
-          { label: 'CME Credits Issued', value: '2,840', icon: ShieldCheck, color: 'text-amber-500' },
-          { label: 'Avg Assessment Score', value: '84%', icon: BarChart3, color: 'text-rose-500' },
+          { label: 'Published Cases', value: cases.filter(c => c.status === 'published').length, icon: PlayCircle, color: 'text-indigo-500' },
+          { label: 'Total Learning Views', value: cases.reduce((acc, c) => acc + (c.views || 0), 0).toLocaleString(), icon: Users, color: 'text-emerald-500' },
+          { label: 'CME Credits Issued', value: cases.reduce((acc, c) => acc + (Math.floor((c.views || 0) * 0.4) * (c.accreditation?.points || c.accreditationPoints || 0)), 0).toLocaleString(), icon: ShieldCheck, color: 'text-amber-500' },
+          { label: 'Avg Assessment Score', value: cases.filter(c => c.averageScore !== undefined).length > 0 ? Math.round(cases.filter(c => c.averageScore !== undefined).reduce((acc, c) => acc + c.averageScore, 0) / cases.filter(c => c.averageScore !== undefined).length) + '%' : '84%', icon: BarChart3, color: 'text-rose-500' },
         ].map((stat, i) => (
           <motion.div 
             key={i}
@@ -1003,12 +940,31 @@ export default function InternalDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 bg-white rounded-[32px] border border-[#E5E5E5] overflow-hidden shadow-sm">
-          <div className="p-6 border-b border-[#E5E5E5] flex items-center justify-between">
-            <h2 className="font-bold text-lg">Case Library</h2>
-            <div className="flex gap-4">
-              <button className="text-xs font-bold tracking-wider text-indigo-600 border-b-2 border-indigo-600 pb-1">All Cases</button>
-              <button className="text-xs font-bold tracking-wider text-gray-400 hover:text-black">Sponsored</button>
-              <button className="text-xs font-bold tracking-wider text-gray-400 hover:text-black hover:underline underline-offset-4">Series</button>
+          <div className="p-6 border-b border-[#E5E5E5] flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <h2 className="font-bold text-lg whitespace-nowrap">Case Library</h2>
+            <div className="flex flex-wrap items-center gap-2 md:gap-4 overflow-x-auto pb-2 md:pb-0 hide-scrollbar">
+              <select 
+                value={caseFilterType} 
+                onChange={(e) => setCaseFilterType(e.target.value)}
+                className="text-xs font-bold text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all hover:bg-gray-100 cursor-pointer"
+              >
+                <option value="all">All Cases</option>
+                <option value="live">Live Cases</option>
+                <option value="recorded">Recorded Cases</option>
+                <option value="structured">Structured CRFs</option>
+                <option value="sponsored">Sponsored</option>
+                <option value="series">In a Series</option>
+              </select>
+
+              <select 
+                value={caseSortType} 
+                onChange={(e) => setCaseSortType(e.target.value)}
+                className="text-xs font-bold text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all hover:bg-gray-100 cursor-pointer"
+              >
+                <option value="recent">Sort: Most Recent</option>
+                <option value="popular">Sort: Popularity (Views)</option>
+                <option value="cme">Sort: Highest CME</option>
+              </select>
             </div>
           </div>
           <div className="divide-y divide-[#E5E5E5]">
@@ -1019,7 +975,21 @@ export default function InternalDashboard() {
             ) : cases.length === 0 ? (
               <div className="p-12 text-center text-gray-400 font-medium font-mono text-sm tracking-tighter">No cases found in library.</div>
             ) : (
-              cases.map((c) => (
+              [...cases]
+                .filter(c => {
+                  if (caseFilterType === 'live') return c.caseType === 'live';
+                  if (caseFilterType === 'recorded') return c.caseType === 'recorded';
+                  if (caseFilterType === 'structured') return c.caseType === 'structured';
+                  if (caseFilterType === 'sponsored') return c.isSponsored;
+                  if (caseFilterType === 'series') return c.isPartOfSeries;
+                  return true;
+                })
+                .sort((a, b) => {
+                  if (caseSortType === 'popular') return (b.views || 0) - (a.views || 0);
+                  if (caseSortType === 'cme') return ((b.accreditation?.points || b.accreditationPoints || 0) - (a.accreditation?.points || a.accreditationPoints || 0));
+                  return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+                })
+                .map((c) => (
                 <div key={c.id} className="p-6 hover:bg-gray-50 transition-colors flex items-center justify-between group cursor-pointer border-l-4 border-l-transparent hover:border-l-indigo-600">
                   <div className="flex items-center gap-4">
                     <div className="w-20 h-12 bg-gray-100 rounded-lg overflow-hidden relative border border-gray-100">
@@ -1059,6 +1029,17 @@ export default function InternalDashboard() {
                           )}>
                             {c.reviewStatus}
                           </span>
+                        )}
+                        {c.isPartOfSeries && c.seriesId && (
+                          <a 
+                            href={`/series/${c.seriesId}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 transition-colors"
+                            onClick={(e) => e.stopPropagation()} // exclude parent div click
+                          >
+                            Series: {c.seriesName || c.seriesId}
+                          </a>
                         )}
                       </div>
                       <p className="text-sm text-gray-500 font-medium mt-0.5 flex items-center gap-2">
@@ -1698,6 +1679,8 @@ export default function InternalDashboard() {
             </div>
           </div>
         </div>
+      ) : activeTab === 'certificates' ? (
+        <CertificateDesigner />
       ) : activeTab === 'sponsors' ? (
         <div className="space-y-6">
           <div className="bg-white rounded-[32px] border border-[#E5E5E5] overflow-hidden shadow-sm">
@@ -2321,6 +2304,32 @@ export default function InternalDashboard() {
                           <option value="published">Final (Live)</option>
                         </select>
                       </div>
+                    </div>
+
+                    {/* Series Setup */}
+                    <div className="p-4 bg-gray-50 border border-gray-100 rounded-2xl space-y-4">
+                      <div className="flex items-center gap-3">
+                        <input
+                           type="checkbox"
+                           id="isPartOfSeries"
+                           checked={newCase.isPartOfSeries}
+                           onChange={(e) => setNewCase({ ...newCase, isPartOfSeries: e.target.checked })}
+                           className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                        />
+                        <label htmlFor="isPartOfSeries" className="text-sm font-black text-gray-900 dark:text-white">Part of a Series</label>
+                      </div>
+                      {newCase.isPartOfSeries && (
+                        <div className="grid grid-cols-2 gap-4">
+                           <div className="space-y-2">
+                             <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">URL-Friendly Series ID</label>
+                             <input type="text" value={newCase.seriesId} onChange={(e) => setNewCase({...newCase, seriesId: e.target.value})} placeholder="e.g. neuro-surgery-2026" className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold font-mono outline-none" />
+                           </div>
+                           <div className="space-y-2">
+                             <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Series Name</label>
+                             <input type="text" value={newCase.seriesName} onChange={(e) => setNewCase({...newCase, seriesName: e.target.value})} placeholder="e.g. Advanced Neurological Series" className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold outline-none" />
+                           </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                   

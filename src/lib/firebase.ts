@@ -24,9 +24,7 @@ export const auth = getAuth(app);
 // Enable experimentalAutoDetectLongPolling to improve reliability in proxied previews
 const firestoreSettings = {
   experimentalAutoDetectLongPolling: true,
-  ignoreUndefinedProperties: true,
-  host: 'firestore.googleapis.com',
-  ssl: true,
+  ignoreUndefinedProperties: true
 };
 
 const databaseId = config.firestoreDatabaseId && config.firestoreDatabaseId !== '(default)' 

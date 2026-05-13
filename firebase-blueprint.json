@@ -171,6 +171,8 @@
         "sponsorDisclaimer": { "type": "string" },
         "expiryDate": { "type": "string", "format": "date-time" },
         "seriesId": { "type": "string" },
+        "cmeCredits": { "type": "number" },
+        "certificateTemplateId": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
@@ -248,9 +250,115 @@
       },
       "required": ["sponsorId", "packageId", "targetType", "startDate", "endDate"]
     }
+    "Assessment": {
+      "title": "Assessment",
+      "description": "Assessment for a medical case",
+      "type": "object",
+      "properties": {
+        "caseId": { "type": "string" },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "text": { "type": "string" },
+              "options": { "type": "array", "items": { "type": "string" } },
+              "correctOptionIndex": { "type": "number" },
+              "difficulty": { "type": "string", "enum": ["Simple", "Moderate", "Difficult"] }
+            }
+          }
+        },
+        "timeLimitMinutes": { "type": "number" },
+        "maxAttempts": { "type": "number" },
+        "passPercentage": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["caseId", "questions", "timeLimitMinutes", "maxAttempts", "passPercentage"]
+    },
+    "AssessmentAttempt": {
+      "title": "Assessment Attempt",
+      "description": "User's attempt at an assessment",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "caseId": { "type": "string" },
+        "assessmentId": { "type": "string" },
+        "answers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "questionId": { "type": "string" },
+              "selectedOptionIndex": { "type": "number" },
+              "isCorrect": { "type": "boolean" }
+            }
+          }
+        },
+        "score": { "type": "number" },
+        "passed": { "type": "boolean" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "caseId", "assessmentId", "startedAt"]
+    },
+    "CertificateTemplate": {
+      "title": "Certificate Template",
+      "description": "Template for certificates",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["default", "custom", "sponsor"] },
+        "sponsorId": { "type": "string" },
+        "layoutData": {
+          "type": "object",
+          "properties": {
+            "logoUrl": { "type": "string" },
+            "logoPosition": { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" } } },
+            "sponsorLogoUrl": { "type": "string" },
+            "sponsorLogoPosition": { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" } } },
+            "textElements": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "text": { "type": "string" },
+                  "position": { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" } } },
+                  "fontSize": { "type": "number" },
+                  "color": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "backgroundUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "type", "createdAt"]
+    },
+    "UserCertificate": {
+      "title": "User Certificate",
+      "description": "Certificate awarded to a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "caseId": { "type": "string" },
+        "attemptId": { "type": "string" },
+        "certificateTemplateId": { "type": "string" },
+        "cmeCreditsEarned": { "type": "number" },
+        "issuedAt": { "type": "string", "format": "date-time" },
+        "qrCodeData": { "type": "string" },
+        "verificationUrl": { "type": "string" },
+        "userName": { "type": "string" },
+        "caseTitle": { "type": "string" }
+      },
+      "required": ["userId", "caseId", "attemptId", "issuedAt"]
+    }
   },
   "firestore": {
-    "users/{userId}": {
       "schema": "User",
       "description": "User profiles and stats"
     },
@@ -293,6 +401,22 @@
     "notifications/{notificationId}": {
       "schema": "Notification",
       "description": "User notifications and alerts"
+    },
+    "cases/{caseId}/assessments/{assessmentId}": {
+      "schema": "Assessment",
+      "description": "Assessment questions for a specific case"
+    },
+    "users/{userId}/assessment_attempts/{attemptId}": {
+      "schema": "AssessmentAttempt",
+      "description": "User attempts at assessments"
+    },
+    "certificate_templates/{templateId}": {
+      "schema": "CertificateTemplate",
+      "description": "Certificate design templates"
+    },
+    "users/{userId}/certificates/{certificateId}": {
+      "schema": "UserCertificate",
+      "description": "Certificates issued to users"
     }
   }
 }

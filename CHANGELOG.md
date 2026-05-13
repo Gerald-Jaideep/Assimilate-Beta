@@ -2,6 +2,20 @@
 
 All notable changes to the Assimilate One platform will be documented in this file.
 
+## [0.5.0] - 2026-05-12
+### Snapshot Major Release
+- **Platform Snapshot:** Created a snapshot of the current stage as a major v0.5 release. Any changes made subsequently will minimally affect the core functionality of this stage.
+- **Fixed:** Resolved `Related cases` and `Presenter cases` fetch errors ("Missing or insufficient permissions") by updating the queries to explicitly filter for `status` `in` `['published', 'scheduled']` to satisfy Firestore security rules.
+
+## [1.3.0] - 2026-05-13
+### Added
+- **Assessment Engine:** Implemented comprehensive objective-style assessments for all recorded and live cases with configurable difficulty (Simple/Moderate/Difficult). Includes 5 min limits, 5 attempts max, and 70% passing criteria.
+- **Certification Engine:** Automated certificate issuance upon successful assessment completion with CME credit assignments.
+- **Certificate Designer CMS:** Super Admin tool to create and manage 'Default', 'Custom', or 'Sponsored' certificate templates with custom sponsor logos and layouts.
+- **Certificate Verification:** Public verification portal via QR codes embedded on generated certificates.
+- **Certificate Export & Sharing:** Added functionality for users to Download (PDF), Print, and Share (Socials/Link) their earned certificates from the User Profile.
+- **Micro-interactions:** Integrated confetti celebrations for correct answers and successfully unlocking certificates.
+
 ## [1.2.0] - 2026-05-07
 ### Added
 - **Structured CRF Support:** Standard case presentations in text+images format structured around industry CRF standards.

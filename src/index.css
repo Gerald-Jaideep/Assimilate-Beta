@@ -7,6 +7,9 @@
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
+@custom-variant hover (&:hover);
+@custom-variant group-hover (:merge(.group):hover &);
+@custom-variant peer-hover (:merge(.peer):hover ~ &);
 
 @layer base {
   body {

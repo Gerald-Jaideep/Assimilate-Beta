@@ -10,6 +10,13 @@ Assimilate One is a high-performance clinical education platform designed for pe
 - **Investigative Supporting Material:** Support for DICOM links, audio evidence, and clinical scans.
 - **Peer Review Workflow:** Integrated clinical validation and presenter/reviewer credentialing.
 
+### 🎓 Assessment & Certification
+- **Post-Case Assessments:** Objective-based questions with configurable time limits, attempts, difficulty levels, and pass criteria.
+- **Automated Certification:** Auto-issues digital certificates (with dynamic layouts and CME credits) upon assessment completion.
+- **Certificate Designer (CMS):** Internal builder for Super Admins to manage standard, custom, and sponsored certificate templates.
+- **Credential Verification:** QR codes and public URLs to allow third-party verification of earned certificates.
+- **Export & Sharing:** Download as PDF, direct printing, and social sharing capabilities.
+
 ### 🛡️ Internal Management (Dashboard)
 - **Case Submission Wizard:** Multi-step wizard for Live Sessions or Recorded Cases.
 - **Role-Based Access:** Admin and speaker validation logic.

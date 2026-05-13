@@ -340,8 +340,18 @@ export default function CaseFeed() {
 
                   {/* Status/Badge Overlays */}
                   <div className="absolute top-4 left-4 flex flex-col gap-3">
+                    {c.isPartOfSeries && c.seriesId && (
+                      <div className="flex items-center gap-2 bg-purple-500/90 backdrop-blur-md border border-purple-400/50 p-1.5 pr-4 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.3)] w-max">
+                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center border border-white/20 shrink-0">
+                          <PlayCircle size={14} className="text-purple-600" />
+                        </div>
+                        <span className="text-[9px] font-black tracking-widest text-white uppercase italic">
+                          Series: {c.seriesName || c.seriesId}
+                        </span>
+                      </div>
+                    )}
                     {c.isSponsored && (
-                      <div className="flex items-center gap-2 bg-white/10 backdrop-blur-2xl border border-white/30 p-1.5 pr-4 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.3)]">
+                      <div className="flex items-center gap-2 bg-white/10 backdrop-blur-2xl border border-white/30 p-1.5 pr-4 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.3)] w-max">
                         <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center overflow-hidden border border-white/20">
                           {c.sponsorLogoUrl ? (
                             <img 

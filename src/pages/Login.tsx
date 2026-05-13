@@ -153,7 +153,20 @@ export default function Login() {
                 </div>
 
                 <button 
-                  onClick={signIn}
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setError(null);
+                      await signIn();
+                    } catch (err: any) {
+                      console.error("Google login error:", err);
+                      if (err.code === 'auth/popup-closed-by-user') {
+                        setError('Popup closed. Please try again.');
+                      } else {
+                        setError(err.message || 'Error signing in via Google.');
+                      }
+                    }
+                  }}
                   className="w-full flex items-center justify-center gap-3 bg-white/5 border border-white/10 py-4 rounded-2xl font-bold text-white hover:bg-white/10 transition-all group lowercase"
                 >
                   <Chrome size={20} />

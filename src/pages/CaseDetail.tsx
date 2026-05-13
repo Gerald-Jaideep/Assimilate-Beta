@@ -36,6 +36,7 @@ import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { Celebration } from '../components/Celebration';
 import { useTheme } from '../hooks/useTheme';
+import { AssessmentModal } from '../components/AssessmentModal';
 
 import { generateICSFile } from '../lib/calendarUtils';
 
@@ -74,6 +75,8 @@ export default function CaseDetail() {
   const [selectedLanguage, setSelectedLanguage] = useState('English (Original)');
   const [transcriptsActive, setTranscriptsActive] = useState(true);
   const [showControls, setShowControls] = useState(true);
+  const [showAssessment, setShowAssessment] = useState(false);
+  const [certificateUnlocked, setCertificateUnlocked] = useState(false);
 
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const controlsTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -549,6 +552,18 @@ export default function CaseDetail() {
     <div className="min-h-screen bg-[#F5F5F3] dark:bg-[#0A0A0A] p-4 md:p-8 space-y-8 animate-in fade-in duration-500 transition-colors">
       <Celebration active={showCelebration} onComplete={() => setShowCelebration(false)} type={celebrationType} />
       
+      {id && (
+        <AssessmentModal 
+          isOpen={showAssessment} 
+          onClose={() => setShowAssessment(false)} 
+          caseId={id} 
+          onCertificateUnlocked={() => {
+            setCertificateUnlocked(true);
+            toast.success("Certificate Unlocked! You can view it in your profile.");
+          }}
+        />
+      )}
+      
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-10 gap-8">
         
         {/* Main Content Area */}
@@ -608,6 +623,11 @@ export default function CaseDetail() {
 
             <div className="flex items-center gap-2">
               <span className="bg-rose-600/10 text-rose-600 dark:bg-rose-600/20 dark:text-rose-500 text-[10px] font-bold px-2 py-0.5 rounded tracking-widest border border-rose-500/20 dark:border-rose-500/30">Case Discussion</span>
+              {caseData.isPartOfSeries && caseData.seriesId && (
+                <Link to={`/series/${caseData.seriesId}`} className="bg-purple-600/10 text-purple-600 dark:bg-purple-600/20 dark:text-purple-400 text-[10px] font-bold px-2 py-0.5 rounded tracking-widest border border-purple-500/20 dark:border-purple-500/30 hover:bg-purple-600/20 transition-colors">
+                  Series: {caseData.seriesName || caseData.seriesId}
+                </Link>
+              )}
               <span className="text-gray-500 dark:text-white/40 text-[10px] font-bold tracking-widest">Presented by {caseData.presenterName}</span>
             </div>
             <h1 className="text-3xl md:text-5xl font-bold tracking-tight leading-[1.1] max-w-4xl text-gray-900 dark:text-white">
@@ -914,7 +934,16 @@ export default function CaseDetail() {
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 justify-end mt-4 lg:mt-0">
+               {user && (
+                 <button 
+                   onClick={() => setShowAssessment(true)}
+                   className="bg-indigo-600 px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-indigo-700 transition-all text-white shadow-lg shadow-indigo-600/20"
+                 >
+                   <ShieldCheck size={16} />
+                   Take Assessment
+                 </button>
+               )}
                <button 
                  onClick={() => handleInteraction('share')}
                  className="bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-white/10 transition-all text-gray-900 dark:text-white"
